@@ -23,11 +23,12 @@ js/core.js        utilities, saving to the browser, permissions, derived data
 js/data.js        fictional seed data (programs, clients, courses, people)
 js/ui.js          UI kit: icons, reusable components, modal, toast, local file store
 js/qr.js          QR code generator
-js/xlsx.js        minimal .xlsx reader (for imports)
+js/xlsx.js        minimal .xlsx reader and writer (imports, template download)
 js/shell.js       role-aware navigation, layout, router, notifications, demo guide
 js/admin.js       Academy Admin: home, programs, clients, setup, schedule
 js/people.js      People & access (Academy Admin)
 js/course.js      course page (role-based tabs)
+js/assess-import.js  instructor import of assessments from the Excel template (template, validation, review)
 js/sessions.js    sessions & attendance
 js/roles.js       role homes (Program Coordinator, Instructor, Client Coordinator, Participant)
 js/main.js        shared actions, event wiring, timers, startup
