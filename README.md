@@ -1,21 +1,23 @@
-# tricore
-# TriCore
+# KAUST Academy · Professional Programs Platform
 
-TriCore is a lightweight web-based PMO and project performance concept interface.
+An interactive front-end prototype of the KAUST Academy Professional Programs platform (final demo, v5).
 
-## Overview
-This project is a front-end prototype built as a single HTML file to demonstrate a modern project management and ERP-inspired dashboard experience.
+- **Ownership model:** Academy Admin owns the structure; Trainer owns the learning content.
+- **Single self-contained file:** `index.html` holds all the HTML, CSS and vanilla JS. It needs no build step, no libraries and no network.
+- **Sample data only:** every person and record in it is fictional. The integrations (SSO, OTP, geofencing, QR signing, Zoom/Teams, SharePoint, email/SMS/WhatsApp, certificate verification) are simulated in the front end.
+- **Languages:** Arabic (RTL) and English.
 
-## Features
-- Dashboard-style interface
-- PMO-inspired structure
-- Lightweight static deployment
-- Suitable for portfolio presentation
+## Run locally
+Open `index.html` in a browser, or serve the folder:
 
-## Tech
-- HTML
-- CSS
-- JavaScript
+```bash
+python3 -m http.server 8000   # then visit http://localhost:8000
+```
+
+## Editing
+All the code is in `index.html`:
+- **Design tokens** (colors, fonts, radius) are in `:root` at the top of the `<style>` block.
+- **The app logic and sample data** are in the `<script>` block at the bottom.
 
 ## Deployment
-This project can be deployed easily on Vercel as a static site.
+`.github/workflows/pages.yml` publishes the site to GitHub Pages on every push to `main`. Turn it on under **Settings → Pages → Source: GitHub Actions**.
