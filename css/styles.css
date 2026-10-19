@@ -561,3 +561,15 @@ legend{font-weight:600;font-size:13px;color:var(--g-700);margin-bottom:6px;paddi
 .back-bar{display:flex;gap:6px;align-items:center;margin:-6px 0 8px;flex-wrap:wrap}
 .back-btn{font-weight:600}
 .back-ico{transform:scaleX(-1)} html[dir=rtl] .back-ico{transform:none}
+
+/* Assessment import from the Excel template */
+.ai-steps{margin:0 0 4px;padding:0;list-style:none;display:grid;gap:12px}
+.ai-steps > li{border:1px solid var(--g-200);border-radius:10px;padding:12px 14px;background:#fff}
+.ai-steps input.sr-only:focus-visible + label.btn{outline:3px solid var(--teal-500);outline-offset:2px}
+.ai-opts{list-style:none;margin:4px 0;padding:0;display:grid;gap:2px;font-size:12.5px;color:var(--g-700)}
+.ai-opts li{display:flex;gap:6px;align-items:center}
+.ai-opts li.ok{color:var(--ok);font-weight:600}
+.ai-opts .ltr{min-width:14px;font-weight:600;color:var(--g-500)}
+.ai-preview{max-height:320px;overflow:auto;border:1px solid var(--g-200);border-radius:8px;padding:0 12px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--g-300);border-top-color:var(--teal-600);border-radius:50%;vertical-align:-2px;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}

@@ -158,17 +158,19 @@ function assessmentsTab(c){
     ${a ? `<div class="meta" style="margin-bottom:10px"><span>${icon('list',13)}${t('nQuestions',{n:qs.length})}${a.sameAsPre?' · '+t('sameAsPreShort'):''}</span><span>${icon('clock',13)}${t('timeLimitN',{n:a.timeLimit})}</span><span>${t('attemptsN',{n:started})}</span></div>` : ''}
     ${locked ? note(t('lockedNote',{n:started}), 'warn', 'lock') : ''}
     <div class="row" style="margin-top:10px">${mine ? (a ? (locked ? `<button class="btn btn-sm" data-action="abNewVersion" data-aid="${a.id}">${t('newVersion')}</button>` : `<button class="btn btn-sm btn-primary" data-action="abEdit" data-aid="${a.id}">${icon('edit',14)}${a.status==='ready'?t('edit'):t('continueEditing')}</button>`) : `<button class="btn btn-primary" data-action="abCreate" data-cid="${c.id}" data-k="${type}">${icon('plus',15)}${t(type==='pre'?'createPre':'createPost')}</button>`) : ''}
+      ${mine && !locked ? `<button class="btn btn-sm" data-action="aiOpen" data-cid="${c.id}" data-k="${type}">${icon('upload',14)}${t('ai.action')}</button>` : ''}
       ${a && qs.length ? `<button class="btn btn-sm" data-action="abPreview" data-aid="${a.id}">${icon('eye',14)}${t('previewAsParticipant')}</button>`:''}${a && a.opens==='manual' && mine && a.status==='ready' ? `<button class="btn btn-sm" data-action="abOpenNow" data-aid="${a.id}">${a.openNow?t('closeNow'):t('openNow')}</button>`:''}</div></div>`; };
   const anyAttempts = S.attempts.some(x=>x.courseId===c.id && x.completed);
   return `${note(t('impactNotTest'), '', 'info')}<div class="grid g-2" style="margin-top:14px">${cardFor('pre')}${cardFor('post')}</div>${anyAttempts && V.cw.cohort ? `<div style="margin-top:16px">${impactPanel(c, V.cw.cohort)}</div>` : ''}`;
 }
 const blankQ = (kind='mcq', obj) => ({id:null, kind, obj, text:'', options: kind==='tf' ? [t('true',null,true), t('false',null,true)] : ['','','',''], correct:0});
-ACT.abCreate = el => { const c = course(el.dataset.cid), type = el.dataset.k;
-  const a = {id:uid('as'), courseId:c.id, type, version:1, status:'draft', timeLimit:10, opens: type==='pre'?'courseStart':'lastDay', closes:'afterEnd7', shuffle:true, sameAsPre: type==='post' && !!curAssessment(c.id,'pre'), openNow:false, questions:[], updatedAt:Date.now(), superseded:false};
+const newAssessment = (c, type) => ({id:uid('as'), courseId:c.id, type, version:1, status:'draft', timeLimit:10, opens: type==='pre'?'courseStart':'lastDay', closes:'afterEnd7', shuffle:true, sameAsPre: type==='post' && !!curAssessment(c.id,'pre'), openNow:false, questions:[], updatedAt:Date.now(), superseded:false});
+ACT.abCreate = el => { const c = course(el.dataset.cid), type = el.dataset.k; if (!can('content', c.id)) return toast(t('ai.denied'),'bad');
+  const a = newAssessment(c, type);
   S.assessments.push(a); addLog('assessment_save', {course:c.id, kind:type}); save(); openBuilder(a); toast(t('assessmentCreated')); };
-function openBuilder(a){ V.ab = {courseId:a.courseId, aid:a.id, kind:'assessment', draft: JSON.parse(JSON.stringify(a)), q: blankQ('mcq', course(a.courseId).objectives[0]?.id)}; render(); }
-ACT.abEdit = el => { const a = byId(S.assessments, el.dataset.aid); if (isLocked(a)) return toast(t('lockedToast'),'warn'); openBuilder(a); };
-ACT.abNewVersion = el => { const a = byId(S.assessments, el.dataset.aid);
+function openBuilder(a, noRender){ V.ab = {courseId:a.courseId, aid:a.id, kind:'assessment', draft: JSON.parse(JSON.stringify(a)), q: blankQ('mcq', course(a.courseId).objectives[0]?.id)}; if (!noRender) render(); }
+ACT.abEdit = el => { const a = byId(S.assessments, el.dataset.aid); if (!can('content', a.courseId)) return toast(t('ai.denied'),'bad'); if (isLocked(a)) return toast(t('lockedToast'),'warn'); openBuilder(a); };
+ACT.abNewVersion = el => { const a = byId(S.assessments, el.dataset.aid); if (!can('content', a.courseId)) return toast(t('ai.denied'),'bad');
   confirmModal(t('newVersion'), t('newVersionConfirm',{v:a.version+1}), t('newVersion'), ()=>{ const n = JSON.parse(JSON.stringify(a)); n.id = uid('as'); n.version = a.version+1; n.status = 'draft'; n.updatedAt = Date.now(); if (n.type==='post' && n.sameAsPre){ n.sameAsPre = false; n.questions = JSON.parse(JSON.stringify(questionsOf(a))); }
     a.superseded = true; S.assessments.push(n); addLog('assessment_version', {course:a.courseId, kind:a.type, v:n.version}); save(); openBuilder(n); toast(t('versionCreated',{v:n.version})); }); };
 ACT.abOpenNow = el => { const a = byId(S.assessments, el.dataset.aid); a.openNow = !a.openNow; addLog('assessment_save', {course:a.courseId, kind:a.type}); save(); render(); toast(a.openNow?t('openedNow'):t('closedNow')); };
@@ -177,13 +179,14 @@ ACT.editQuiz = el => { const a = byId(S.activities, el.dataset.aid); V.ab = {cou
 function assessmentEditor(c){
   const A = V.ab, d = A.draft, quiz = A.kind==='quiz', post = !quiz && d.type==='post', same = post && d.sameAsPre, qs = d.questions || [], Q = A.q;
   const objName = id => esc(L(c.objectives.find(o=>o.id===id)) || '—');
-  const list = qs.map((q,i)=>`<li class="item-row"><span class="badge b-navy nodot">${i+1}</span><div class="grow"><div class="small cell-main">${LE(q.text)||'<span class="muted">—</span>'}</div><div class="xs muted">${t('qk.'+q.kind)} · ${t('correctAnswer')}: ${LE(q.options[q.correct])||'—'}${c.objectives.length?` · ${t('objectiveTag')}: ${objName(q.obj)}`:''}</div></div>
+  const list = qs.map((q,i)=>`<li class="item-row"><span class="badge b-navy nodot">${i+1}</span><div class="grow"><div class="small cell-main" dir="auto">${LE(q.text)||'<span class="muted">—</span>'}</div><div class="xs muted">${t('qk.'+q.kind)} · ${q.kind==='short' ? t('ai.notGraded') : `${t('correctAnswer')}: ${LE(q.options[q.correct])||'—'}`}${c.objectives.length?` · ${t('objectiveTag')}: ${objName(q.obj)}`:''}</div></div>
     <div class="row" style="flex-wrap:nowrap"><button class="btn btn-sm" data-action="abQEdit" data-qid="${q.id}">${t('edit')}</button><button class="btn btn-sm btn-ghost" data-action="abMove" data-qid="${q.id}" data-k="-1" ${i===0?'disabled':''} aria-label="${esc(t('moveUp'))}">↑</button><button class="btn btn-sm btn-ghost" data-action="abMove" data-qid="${q.id}" data-k="1" ${i===qs.length-1?'disabled':''} aria-label="${esc(t('moveDown'))}">↓</button><button class="btn btn-sm btn-ghost" data-action="abDel" data-qid="${q.id}" aria-label="${esc(t('deleteQuestion'))}">${icon('x',14)}</button></div></li>`).join('');
   const editing = Q.id && qs.some(x=>x.id===Q.id), n = editing ? qs.findIndex(x=>x.id===Q.id)+1 : qs.length+1;
   const panel = `<form id="abQForm" class="qe" data-submit="abQSave" novalidate><div class="qe-h"><h3>${editing?t('editQuestionN',{n}):t('addQuestionN',{n})}</h3>
-      <div class="row" role="radiogroup" aria-label="${esc(t('questionType'))}">${['mcq','tf'].map(k=>`<label class="check small"><input type="radio" name="qkind" value="${k}" data-change="abQKind" ${Q.kind===k?'checked':''}>${t('qk.'+k)}</label>`).join('')}</div></div>
+      <div class="row" role="radiogroup" aria-label="${esc(t('questionType'))}">${(quiz?['mcq','tf']:['mcq','tf','short']).map(k=>`<label class="check small"><input type="radio" name="qkind" value="${k}" data-change="abQKind" ${Q.kind===k?'checked':''}>${t('qk.'+k)}</label>`).join('')}</div></div>
     <label class="small cell-main" for="f-qtext">${t('questionText')}</label><textarea class="textarea" id="f-qtext" name="qtext" rows="2" style="min-height:56px;margin:4px 0 10px">${esc(Q.text)}</textarea>
     ${Q.kind==='mcq' ? `<div class="small muted" style="margin-bottom:6px">${t('optionsHelp')}</div>${Q.options.map((o,j)=>`<div class="opt-row"><input type="radio" name="qcorrect" value="${j}" ${Q.correct===j?'checked':''} aria-label="${esc(t('markCorrect')+' '+(j+1))}"><input class="input q-opt" data-i="${j}" value="${esc(o)}" aria-label="${esc(t('optionN',{n:j+1},true))}" style="flex:1"></div>`).join('')}${Q.options.length<6?`<button type="button" class="btn btn-sm btn-ghost" data-action="abQAddOpt">${icon('plus',13)}${t('addOption')}</button>`:''}`
+      : Q.kind==='short' ? `<p class="xs muted">${t('shortNote')}</p>`
       : `<div class="row"><span class="small">${t('correctAnswer')}:</span><label class="check"><input type="radio" name="qcorrect" value="0" ${Q.correct===0?'checked':''}>${t('true')}</label><label class="check"><input type="radio" name="qcorrect" value="1" ${Q.correct===1?'checked':''}>${t('false')}</label></div>`}
     ${c.objectives.length ? `<div class="field" style="margin-top:10px"><label for="f-qobj">${t('linkObjective')}</label><select class="select" id="f-qobj" name="qobj">${c.objectives.map(o=>opt(o.id, esc(L(o)), Q.obj)).join('')}</select></div>` : ''}
     <div id="abq-err"></div><div class="row"><button type="submit" class="btn btn-primary">${icon(editing?'check':'plus',14)}${editing?t('saveQuestion'):t('addQuestion')}</button>${editing?`<button type="button" class="btn" data-action="abQCancel">${t('cancel')}</button>`:''}</div></form>`;
@@ -191,12 +194,15 @@ function assessmentEditor(c){
     ${field('ab-opens', t('opens'), `<select class="select" id="f-ab-opens">${OPENS.map(k=>opt(k, t('op.'+k), d.opens)).join('')}</select>`)}
     <div class="field"><span class="lbl">${t('order')}</span><label class="check"><input type="checkbox" id="f-ab-shuffle" ${d.shuffle?'checked':''}>${t('shuffleOpt')}</label></div></div></details>`;
   const title = quiz ? t('editQuizTitle',{a:L(byId(S.activities,A.aid).title)}) : t(d.type==='pre'?'preAssessment':'postAssessment') + (d.version>1?` · v${d.version}`:'');
+  const shown = same ? questionsOf(curAssessment(c.id,'pre')) : qs, pts = shown.filter(gradable).length;
+  const imp = !quiz && A.imported ? `<div class="note ok" id="ab-import-note" tabindex="-1" style="margin-bottom:12px">${icon('upload',16)}<div><b>${t('ai.inEditor', {n:A.imported.n, f:A.imported.file})}</b><div class="xs">${t('ai.inEditorHelp')}</div></div></div>` : '';
+  const tools = quiz ? '' : `<div class="row between" style="margin-bottom:12px"><span class="small muted">${t('nQuestions',{n:shown.length})} · ${t('ai.nPoints',{n:pts})}</span>${can('content', c.id) ? `<button class="btn btn-sm" data-action="aiOpen" data-cid="${c.id}" data-k="${d.type}" data-fixed="1">${icon('upload',14)}${t('ai.action')}</button>` : ''}</div>`;
   const body = same ? note(t('usingPreBank',{n:questionsOf(curAssessment(c.id,'pre')).length}), 'ok', 'checkCircle')
     : `${qs.length ? `<ul class="list" style="margin-bottom:14px">${list}</ul>` : `<p class="small muted" style="margin-bottom:12px">${t('noQuestionsYet')}</p>`}${panel}`;
   return `<div class="card card-b"><div class="section-label"><h2>${title}</h2>${badge(d.status==='ready'?'b-ok':'b-info', d.status==='ready'?t('published'):t('draft'))}</div>
     <p class="small muted" style="margin-bottom:14px">${quiz ? t('quizBuilderIntro') : t(d.type==='pre'?'preExplain':'postExplain')}</p>
     ${post ? `<label class="check" style="margin-bottom:12px"><input type="checkbox" id="f-ab-same" data-change="abSame" ${same?'checked':''}>${t('sameAsPreOpt')}</label>` : ''}
-    <div id="ab-err"></div>${body}${settings}<div class="divider"></div>
+    ${imp}${tools}<div id="ab-err"></div>${body}${settings}<div class="divider"></div>
     <div class="row between"><button class="btn" data-action="abCancel">${t('backToList')}</button><div class="row"><button class="btn" data-action="abPreview" data-k="draft">${icon('eye',14)}${t('preview')}</button>${quiz?'':`<button class="btn" data-action="abSave" data-k="draft">${t('saveDraft')}</button>`}<button class="btn btn-primary" data-action="abSave" data-k="ready">${icon('check',14)}${quiz?t('saveQuestions'):t('publish')}</button></div></div></div>`;
 }
 /** Read the question panel + settings back into state (so re-renders keep typed text). */
@@ -209,25 +215,25 @@ function abCollect(){
   if (Q.kind==='mcq') $$('.q-opt', f).forEach(o=>{ Q.options[Number(o.dataset.i)] = o.value; });
   const c = f.querySelector('input[name="qcorrect"]:checked'); Q.correct = c ? Number(c.value) : null;
 }
-CHG.abQKind = el => { abCollect(); const Q = V.ab.q; Q.kind = el.value; if (Q.kind==='tf'){ Q.options = [t('true',null,true), t('false',null,true)]; Q.correct = 0; } else if (Q.options.length<3 || Q.options[0]===t('true',null,true)){ Q.options = ['','','','']; Q.correct = 0; } render(); $('#f-qtext')?.focus(); };
+CHG.abQKind = el => { abCollect(); const Q = V.ab.q; Q.kind = el.value; if (Q.kind==='short'){ Q.options = []; Q.correct = null; } else if (Q.kind==='tf'){ Q.options = [t('true',null,true), t('false',null,true)]; Q.correct = 0; } else if (Q.options.length<3 || Q.options[0]===t('true',null,true)){ Q.options = ['','','','']; Q.correct = 0; } render(); $('#f-qtext')?.focus(); };
 ACT.abQAddOpt = () => { abCollect(); V.ab.q.options.push(''); render(); const o = $$('.q-opt').pop(); o && o.focus(); };
-ACT.abQEdit = el => { abCollect(); const q = V.ab.draft.questions.find(x=>x.id===el.dataset.qid); V.ab.q = {id:q.id, kind:q.kind==='tf'?'tf':'mcq', obj:q.obj, text:L(q.text), options:q.options.map(o=>L(o)), correct:q.correct}; render(); const f = $('#f-qtext'); if (f){ f.focus(); f.scrollIntoView({block:'center'}); } };
+ACT.abQEdit = el => { abCollect(); const q = V.ab.draft.questions.find(x=>x.id===el.dataset.qid); V.ab.q = {id:q.id, kind:['tf','short'].includes(q.kind)?q.kind:'mcq', obj:q.obj, text:L(q.text), options:q.options.map(o=>L(o)), correct:q.correct}; render(); const f = $('#f-qtext'); if (f){ f.focus(); f.scrollIntoView({block:'center'}); } };
 ACT.abQCancel = () => { V.ab.q = blankQ('mcq', course(V.ab.courseId).objectives[0]?.id); render(); };
 SUB.abQSave = () => { abCollect(); const A = V.ab, Q = A.q, errs = [];
   const opts = Q.kind==='mcq' ? Q.options.map((o,j)=>({o:o.trim(), j})).filter(x=>x.o) : Q.options.map((o,j)=>({o, j}));
   if (!Q.text.trim()) errs.push(t('vErrTextOne')); if (Q.kind==='mcq' && opts.length<2) errs.push(t('vErrOptionsOne'));
-  if (Q.correct==null || !opts.some(x=>x.j===Q.correct)) errs.push(t('vErrCorrectOne'));
+  if (Q.kind!=='short' && (Q.correct==null || !opts.some(x=>x.j===Q.correct))) errs.push(t('vErrCorrectOne'));
   if (errs.length){ $('#abq-err').innerHTML = note(errs.join('<br>'), 'bad', 'alert') + '<div style="height:10px"></div>'; return; }
   const other = LANG==='ar' ? 'en' : 'ar', ex = Q.id && A.draft.questions.find(x=>x.id===Q.id);
   const mkT = (txt, old) => Object.assign({}, old||{}, {[LANG]:txt}, (old && old[other]) ? {} : {[other]:txt});
   const q = {id: ex ? ex.id : 'q'+uid('').slice(-6), kind:Q.kind, obj:Q.obj || course(A.courseId).objectives[0]?.id || 'O1', required:true, text: mkT(Q.text.trim(), ex && ex.text),
-    options: Q.kind==='tf' ? [T('True','صحيح'), T('False','خطأ')] : opts.map((x,i)=>mkT(x.o, ex && ex.options[x.j])), correct: Q.kind==='tf' ? Q.correct : opts.findIndex(x=>x.j===Q.correct)};
+    options: Q.kind==='tf' ? [T('True','صحيح'), T('False','خطأ')] : Q.kind==='short' ? [] : opts.map((x,i)=>mkT(x.o, ex && ex.options[x.j])), correct: Q.kind==='tf' ? Q.correct : Q.kind==='short' ? null : opts.findIndex(x=>x.j===Q.correct)};
   if (ex) Object.assign(ex, q); else A.draft.questions.push(q);
   A.q = blankQ(Q.kind, Q.obj); render(); toast(ex ? t('questionSaved') : t('questionAdded',{n:A.draft.questions.length})); $('#f-qtext')?.focus(); };
 CHG.abSame = () => { abCollect(); render(); };
 ACT.abMove = el => { abCollect(); const qs = V.ab.draft.questions, i = qs.findIndex(q=>q.id===el.dataset.qid), j = i+Number(el.dataset.k); if (j<0||j>=qs.length) return; [qs[i],qs[j]] = [qs[j],qs[i]]; render(); };
 ACT.abDel = el => { abCollect(); V.ab.draft.questions = V.ab.draft.questions.filter(q=>q.id!==el.dataset.qid); if (V.ab.q.id===el.dataset.qid) V.ab.q = blankQ('mcq', course(V.ab.courseId).objectives[0]?.id); render(); toast(t('questionRemoved'),'info'); };
-ACT.abCancel = () => { V.ab = null; render(); };
+ACT.abCancel = () => { if (V.ab && V.ab.imported) return confirmModal(t('ai.discardT'), t('ai.discardQ', {n:V.ab.imported.n}), t('ai.discard'), ()=>{ V.ab = null; render(); }, true); V.ab = null; render(); };
 function abValidate(d){
   const errs = [];
   if (d.type==='post' && d.sameAsPre){ const pre = curAssessment(V.ab.courseId,'pre'); if (!pre || !pre.questions.length) errs.push(t('vErrNoPre')); return errs; }
@@ -238,7 +244,10 @@ ACT.abSave = el => { abCollect(); const A = V.ab, d = A.draft, ready = el.datase
   if (A.q && A.q.text.trim() && !(d.type==='post' && d.sameAsPre)){ $('#ab-err').innerHTML = note(t('unsavedQuestion'), 'warn', 'alert') + '<div style="height:12px"></div>'; $('#ab-err').scrollIntoView({block:'center'}); return; }
   if (ready){ const errs = abValidate(d); if (errs.length){ $('#ab-err').innerHTML = note(`<b>${t('fixBeforeReady')}</b><ul style="margin:6px 0 0;padding-inline-start:18px">${errs.map(e=>`<li>${e}</li>`).join('')}</ul>`, 'bad', 'alert') + '<div style="height:12px"></div>'; $('#ab-err').scrollIntoView({block:'center'}); return; } }
   if (A.kind==='quiz'){ const a = byId(S.activities, A.aid); a.questions = d.questions; addLog('activity_save', {course:a.courseId, aid:a.id}); V.ab = null; save(); render(); return toast(t('quizSaved')); }
+  if (!can('content', A.courseId)) return toast(t('ai.denied'),'bad');
+  if (!A.aid){ const cur = curAssessment(A.courseId, A.pending.type); if (cur){ $('#ab-err').innerHTML = note(t('ai.createdMeanwhile'), 'bad', 'alert'); return; } S.assessments.push(A.pending); A.aid = A.pending.id; }
   const a = byId(S.assessments, A.aid); if (isLocked(a)){ V.ab = null; render(); return toast(t('lockedToast'),'warn'); }
+  if (A.imported && !d.sameAsPre){ (a.imports = a.imports || []).push(A.imported); addLog('assessment_import', {course:a.courseId, kind:a.type, n:A.imported.n}); }
   Object.assign(a, {timeLimit:d.timeLimit, opens:d.opens, shuffle:d.shuffle, sameAsPre:!!d.sameAsPre, questions: d.sameAsPre ? [] : d.questions, status: ready ? 'ready' : 'draft', updatedAt:Date.now()});
   addLog(ready?'assessment_ready':'assessment_save', {course:a.courseId, kind:a.type}); V.ab = null; save(); render(); toast(ready ? t('assessmentPublished') : t('draftSaved')); };
 
@@ -266,10 +275,10 @@ function runnerBody(){
   const A = V.attempt, q = A.qs.find(x=>x.id===A.order[A.idx]), a = A.ans[q.id] || {}, left = Math.max(0, A.limit*60 - Math.floor((Date.now()-A.started)/1000));
   const intro = A.idx===0 ? `<div style="margin-bottom:12px">${note(A.preview ? t('previewIntro') : A.kind==='quiz' ? t('quizIntro') : A.type==='pre' ? t('preIntro') : t('postIntro'), A.preview?'sim':'', 'info')}</div>` : '';
   const opts = q.kind==='short' ? `<textarea class="textarea" data-change="ansText" data-k="${q.id}" rows="4" aria-label="${esc(t('yourAnswer'))}">${esc(a.text||'')}</textarea><p class="xs muted">${t('shortNotGraded')}</p>`
-    : A.opts[q.id].map(i=>`<label class="opt"><input type="radio" name="ans" value="${i}" ${a.choice===i?'checked':''} data-change="ansPick" data-k="${q.id}"><span>${LE(q.options[i])}</span></label>`).join('');
+    : A.opts[q.id].map(i=>`<label class="opt"><input type="radio" name="ans" value="${i}" ${a.choice===i?'checked':''} data-change="ansPick" data-k="${q.id}"><span dir="auto">${LE(q.options[i])}</span></label>`).join('');
   return `${intro}<div class="q-head"><span class="small muted">${t('questionNofM',{n:A.idx+1, m:A.order.length})}${q.required===false?' · '+t('optional'):''}</span><span class="timer js-timer ${left<60?'low':''}" role="timer" aria-label="${esc(t('timeLeft'))}">${fmtSecs(left)}</span></div>
   <div class="qprog" aria-hidden="true"><span style="width:${A.idx/A.order.length*100}%"></span></div>
-  <fieldset><legend class="q-text">${LE(q.text)}</legend>${opts}</fieldset>
+  <fieldset><legend class="q-text" dir="auto">${LE(q.text)}</legend>${opts}</fieldset>
   ${gradable(q) && !A.noConfidence ? `<fieldset><legend>${t('confidenceQ')}</legend><div class="conf">${['sure','unsure','guess'].map(c=>`<label><input type="radio" name="conf" value="${c}" ${a.conf===c?'checked':''} data-change="confPick" data-k="${q.id}">${t('conf.'+c)}</label>`).join('')}</div></fieldset>` : ''}
   <p class="err small" id="e-attempt" role="alert" style="color:var(--bad);font-weight:600"></p>${A.kind==='assessment'?`<p class="xs muted">${t('noAnswerKey')}</p>`:''}`;
 }

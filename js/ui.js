@@ -122,9 +122,10 @@ function formErrors(form, errs){
 const validEmail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 
 /* ---------- Downloads ---------- */
-function downloadText(name, text, mime='text/csv;charset=utf-8'){
+function downloadText(name, text, mime='text/csv;charset=utf-8'){ return downloadBlob(name, new Blob(['\ufeff'+text], {type:mime})); }
+function downloadBlob(name, blob){
   try {
-    const blob = new Blob(['\ufeff'+text], {type:mime}), a = document.createElement('a');
+    const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = name; a.rel = 'noopener'; document.body.appendChild(a); a.click();
     setTimeout(()=>{ try { URL.revokeObjectURL(a.href); } catch(e){} a.remove(); }, 1500);
     if (inFrame()) toast(t('downloadMaybeBlocked'), 'info');
