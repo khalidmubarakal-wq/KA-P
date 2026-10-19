@@ -187,7 +187,7 @@ function homeParticipant(){
   const ens = myEnrollments(), first = myPart();
   const best = ens.map(pa=>({pa, n:nextRequired(pa)})).sort((a,b)=>a.n.rank-b.n.rank || (a.n.due??99)-(b.n.due??99))[0];
   const nr = best ? `<div class="card card-b next-card"><div class="eyebrow">${t('nextRequired')}</div><div class="row between" style="margin-top:6px;gap:12px"><div style="min-width:0"><h2>${esc(best.n.title)}</h2><p class="small muted" style="margin-top:2px">${esc(L(courseOfPa(best.pa).title))} · ${esc(best.n.sub)}</p></div>${best.n.btn}</div></div>` : '';
-  const html = `<div class="p-wrap">${pageHead(t('hello',{n:L(first.name).split(' ')[0]}), t('pHomeSub',{n:ens.length}))}
+  const html = `<div>${pageHead(t('hello',{n:L(first.name).split(' ')[0]}), t('pHomeSub',{n:ens.length}))}
     <div class="grid g-main">${todayCard(ens)}${nr}</div>
     <div class="section-label" style="margin-top:22px"><h2>${t('nav.mycourse')}</h2><a class="small" href="#/mycourse">${t('viewAll')}</a></div>
     <div class="tile-grid">${ens.map(courseTile).join('')}</div>
@@ -199,7 +199,7 @@ const HUB_TABS = ['materials','todo','schedule','progress','about'];
 SCREENS.mycourse = R => {
   const ens = myEnrollments();
   if (!R || !R.id){
-    return {title:t('nav.mycourse'), html:`<div class="p-wrap">${pageHead(t('nav.mycourse'), t('myCoursesSub'))}<div class="tile-grid">${ens.map(courseTile).join('')}</div></div>`};
+    return {title:t('nav.mycourse'), html:`<div>${pageHead(t('nav.mycourse'), t('myCoursesSub'))}<div class="tile-grid">${ens.map(courseTile).join('')}</div></div>`};
   }
   const pa = ens.find(x=>x.id===R.id); if (!pa) return denied(t('notFound'));
   const ch = cohort(pa.cohortId), c = course(ch.courseId), p = program(c.programId), held = heldDays(ch.id), mine = evalsOf(ch.id, pa.id), ci = certInfo(pa.id);
@@ -221,7 +221,7 @@ SCREENS.mycourse = R => {
     + `<div style="height:16px"></div>` + card(t('myAttendance'), `<ul class="list">${activeSessions(ch.id).filter(s=>s.status!=='scheduled').map(s=>`<li class="row between"><span class="small">${t('dayN',{n:dayIndex(s)})} · ${LE(s.title)}</span>${attBadge(rec(s.id,pa.id), s)}</li>`).join('') || `<li class="small muted">${t('noSessionsYet')}</li>`}</ul>`);
   if (tab==='about') body = card(t('ms2.overview'), `${L(c.desc)?`<p class="small" style="margin-bottom:12px">${LE(c.desc)}</p>`:''}<dl class="dl"><dt>${t('instructorTeam')}</dt><dd>${courseInstructors(c.id).map(id=>`<div>${esc(userLabel(id))}${id===leadOf(c.id)&&courseInstructors(c.id).length>1?` <span class="xs muted">(${t('leadShort')})</span>`:''} · <span class="ltr small">${esc(user(id).email)}</span></div>`).join('') || '—'}</dd><dt>${t('program')}</dt><dd>${LE(p.title)}</dd><dt>${t('dates')}</dt><dd>${esc(courseRangeTxt(c.id))}</dd><dt>${t('language')}</dt><dd>${t('lang.'+c.language)}</dd></dl>${c.objectives&&c.objectives.length?`<h3 style="margin:12px 0 6px">${t('objectives')}</h3><ol class="small" style="margin:0;padding-inline-start:20px">${c.objectives.map(o=>`<li>${esc(L(o))}</li>`).join('')}</ol>`:''}`);
   const head = `<div class="hub-head">${breadcrumb([[t('nav.mycourse'),'#/mycourse'],[LE(c.title)]])}<h1>${LE(c.title)}</h1><p class="page-sub">${LE(p.title)} · ${icon('user',13)} ${esc(courseTeamText(c.id))} · ${esc(courseRangeTxt(c.id))}</p></div>`;
-  return {title:L(c.title), html:`<div class="p-wrap">${head}${tabsHtml}${banner}<div role="tabpanel" class="hub-panel">${body}</div></div>`};
+  return {title:L(c.title), html:`<div>${head}${tabsHtml}${banner}<div role="tabpanel" class="hub-panel">${body}</div></div>`};
 };
 const HUB_ICON = {materials:'book', todo:'clipboard', schedule:'calendar', progress:'trend', about:'info'};
 /* Check in: the fastest path — every session today across your courses, with the code box right there */
@@ -234,8 +234,8 @@ SCREENS.checkin = () => {
   else if (rows.length) body = card('', `<ul class="list today-list">${rows.map(x=>todayRow(x.pa, x.s)).join('')}</ul><div style="margin-top:12px">${note(t('ciWaiting'),'', 'clock')}</div>`);
   else body = card('', empty(t('noSessionToday'), nextUp ? t('nextSessionIs',{s:L(nextUp.s.title), d:dayLabel(sOff(nextUp.s)), t:nextUp.s.start}) : '', 'calendar'));
   const others = live.length && rows.length > live.length ? card(t('laterToday'), `<ul class="list today-list">${rows.filter(x=>x.s.status!=='live' && geoOpenOf(x.pa)?.id!==x.s.id).map(x=>todayRow(x.pa, x.s)).join('')}</ul>`) : '';
-  return {title:t('nav.checkin'), html:`<div class="ci-wrap">${pageHead(t('nav.checkin'), t('checkinSub'))}${body}${others?`<div style="margin-top:16px">${others}</div>`:''}
-    <details class="explain card card-b" style="margin-top:16px"><summary>${t('howCheckIn')}</summary><ol class="small" style="margin:8px 0 0;padding-inline-start:18px;line-height:1.8"><li>${t('how1')}</li><li>${t('how2')}</li><li>${t('how3b')}</li></ol><p class="xs muted" style="margin-top:6px">${t('how4')}</p></details></div>`,
+  return {title:t('nav.checkin'), html:`${pageHead(t('nav.checkin'), t('checkinSub'))}<div class="ci-layout"><div class="ci-main">${body}</div><div class="ci-side stack">${others||''}
+    <details class="explain card card-b"><summary>${t('howCheckIn')}</summary><ol class="small" style="margin:8px 0 0;padding-inline-start:18px;line-height:1.8"><li>${t('how1')}</li><li>${t('how2')}</li><li>${t('how3b')}</li></ol><p class="xs muted" style="margin-top:6px">${t('how4')}</p></details></div></div>`,
     after: ()=>{ const i = $('.code-input'); i && !topModal() && i.focus({preventScroll:true}); }};
 };
 ACT.submitActivity = el => { const a = byId(S.activities, el.dataset.aid), key = a.id+':'+myPid(a.courseId), dr = S.drafts[key];
@@ -269,7 +269,7 @@ SCREENS.activate = () => {
   if (step===4) body = card(t('act.s4'), `<form data-submit="actPassword" novalidate>${field('apw', t('act.password'), inp('apw','', 'password', 'autocomplete="new-password" dir="ltr"'), t('act.pwHelp'))}${field('apw2', t('act.password2'), inp('apw2','', 'password', 'autocomplete="new-password" dir="ltr"'))}${note(t('act.pwSim'),'sim','lock')}
     <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn btn-primary" type="submit">${t('act.finish')}</button></div></form>`);
   if (step===5) body = `<div class="card card-b"><div class="result r-ok"><div class="ring">${icon('checkCircle',38)}</div><h2>${t('act.doneT')}</h2><p class="small muted" style="max-width:52ch;margin:6px auto 0">${t('act.doneMsg',{c:L(c.title)})}</p></div><div class="row" style="justify-content:center;margin-top:12px"><a class="btn btn-primary btn-lg" href="#/home">${t('act.goHome')}</a></div><p class="xs muted" style="text-align:center;margin-top:12px">${t('act.simDone')}</p></div>`;
-  return {title:t('act.title'), html:`<div class="verify-card">${pageHead(t('act.title'), t('act.sub',{n:L(pa.name).split(' ')[0]}))}${stepper}${body}</div>`, after: ()=>{ const f = $('#f-aotp') || $('#f-apw'); f && f.focus(); }};
+  return {title:t('act.title'), html:`<div class="focus-col">${pageHead(t('act.title'), t('act.sub',{n:L(pa.name).split(' ')[0]}))}${stepper}${body}</div>`, after: ()=>{ const f = $('#f-aotp') || $('#f-apw'); f && f.focus(); }};
 };
 ACT.actGo = el => { V.act.step = Number(el.dataset.k); render(); };
 const newOtp = () => String(100000 + Math.floor(Math.random()*900000));
@@ -380,7 +380,7 @@ SCREENS.verify = R => {
   else if (res){ const ci = certInfo(res.paid); out = `<div class="card card-b" style="margin-top:16px"><div class="row between"><div class="row"><span style="color:var(--ok)">${icon('shield',26)}</span><h2>${t('verifyFound')}</h2></div>${badge('b-ok', t('validDemo'))}</div>
     <dl class="dl" style="margin-top:14px"><dt>${t('participant')}</dt><dd>${LE(ci.p.name)}</dd><dt>${t('program')}</dt><dd>${LE(ci.program.title)}</dd><dt>${t('course')}</dt><dd>${LE(ci.course.title)}</dd><dt>${t('cohort')}</dt><dd>${LE(ci.cohort.name)} · ${esc(cohortRange(ci.cohort.id))}</dd><dt>${t('issuedBy')}</dt><dd>KAUST Academy (${t('demoBranding')})</dd><dt>${t('issuedOnLbl')}</dt><dd>${esc(fmtDateLong(res.r.at))}</dd><dt>${t('verificationCode')}</dt><dd class="ltr" style="text-align:start">${esc(res.r.code)}</dd></dl><div style="margin-top:14px">${note(t('verifyDisclaimer'),'sim')}</div></div>`; }
   const samples = Object.values(S.certs).filter(c=>c.state==='approved').slice(0,3).map(c=>`<button class="btn btn-sm btn-ghost ltr" data-action="verifySample" data-k="${esc(c.code)}">${esc(c.code)}</button>`).join('');
-  return {title:t('nav.verify'), html:`<div class="verify-card">${pageHead(t('verifyTitle'), t('verifySub'))}<div class="card card-b"><form data-submit="verifyCode" class="row" style="align-items:flex-end" novalidate><div class="field" style="flex:1;margin:0;min-width:220px"><label for="f-vcode">${t('verificationCode')}</label><input class="input ltr" id="f-vcode" name="vcode" value="${esc(V.verify.code)}" placeholder="DEMO-KA26-XXXX-XXXX" autocomplete="off" spellcheck="false"><span class="err" id="e-vcode"></span></div><button class="btn btn-primary" type="submit">${icon('shield',16)}${t('verify')}</button></form>${samples?`<div class="row xs muted" style="margin-top:10px">${t('tryCodes')} ${samples}</div>`:''}</div>${out}<p class="xs muted" style="margin-top:12px">${t('verifyFoot')}</p></div>`};
+  return {title:t('nav.verify'), html:`<div class="focus-col">${pageHead(t('verifyTitle'), t('verifySub'))}<div class="card card-b"><form data-submit="verifyCode" class="row" style="align-items:flex-end" novalidate><div class="field" style="flex:1;margin:0;min-width:220px"><label for="f-vcode">${t('verificationCode')}</label><input class="input ltr" id="f-vcode" name="vcode" value="${esc(V.verify.code)}" placeholder="DEMO-KA26-XXXX-XXXX" autocomplete="off" spellcheck="false"><span class="err" id="e-vcode"></span></div><button class="btn btn-primary" type="submit">${icon('shield',16)}${t('verify')}</button></form>${samples?`<div class="row xs muted" style="margin-top:10px">${t('tryCodes')} ${samples}</div>`:''}</div>${out}<p class="xs muted" style="margin-top:12px">${t('verifyFoot')}</p></div>`};
 };
 SUB.verifyCode = form => { const c = form.vcode.value.trim(); if (!c) return formErrors(form, {vcode:t('errRequired')}); V.verify.code = c.toUpperCase(); V.verify.result = findCert(c) || 'nf'; setHash(href('verify',null,{code:V.verify.code}), true); render(); };
 ACT.verifySample = el => { V.verify.code = el.dataset.k; V.verify.result = findCert(el.dataset.k) || 'nf'; setHash(href('verify',null,{code:V.verify.code}), true); render(); };
