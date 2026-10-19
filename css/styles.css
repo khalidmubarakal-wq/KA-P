@@ -591,3 +591,25 @@ legend{font-weight:600;font-size:13px;color:var(--g-700);margin-bottom:6px;paddi
 .task-grid .ti-btn:hover{border-color:var(--teal-500);background:#fff}
 .task-grid .ti-btn .ti-go{color:var(--teal-700);font-weight:600}
 .result h2[tabindex="-1"]:focus{outline:none}
+
+/* Profiles */
+.avatar{display:inline-grid;place-items:center;border-radius:50%;color:#fff;font-weight:700;flex:none;object-fit:cover;letter-spacing:.02em;line-height:1}
+.profile-btn{gap:8px;padding-inline:6px 10px}
+.profile-btn .avatar{border:2px solid #fff;box-shadow:0 0 0 1px var(--g-200)}
+.profile-btn[aria-current=page]{background:var(--teal-50)}
+.pf-head{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between}
+.pf-id{display:flex;gap:16px;align-items:center;min-width:0}
+.pf-name{font-size:20px}
+.pf-actions{display:flex;gap:8px;flex-wrap:wrap}
+.pf-acting{flex-basis:100%;display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--g-100);padding-top:12px}
+.pf-sub{font-size:13px;color:var(--g-600);margin:12px 0 4px} .pf-sub:first-child{margin-top:0}
+.pf-bio{white-space:pre-line;max-width:72ch;display:block}
+.pf-fs{border:1px solid var(--g-200);border-radius:10px;padding:12px 14px}
+#pfForm input.sr-only:focus-visible + label.btn{outline:3px solid var(--teal-500);outline-offset:2px}
+@media (max-width:600px){ .pf-id .avatar{width:64px!important;height:64px!important} .pf-actions{width:100%} .pf-actions .btn{flex:1} }
+/* Profile action stays reachable on small screens without widening the top bar */
+.nav .nav-profile{margin-top:10px;border-top:1px solid rgba(255,255,255,.08);border-radius:0 0 8px 8px;padding-top:12px}
+@media (max-width:600px){ .topbar .profile-btn{width:34px;padding:0;justify-content:center;gap:0} }
+@media (max-width:380px){ .topbar .pill-demo{display:none} }
+.dl dd{overflow-wrap:anywhere}
+#pfDirty[hidden]{display:none}

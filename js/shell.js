@@ -15,7 +15,7 @@ const NAV = {
 /** Role-specific names for shared routes (one route, plain label per role). */
 const NAV_LABEL = {participant:{home:'nav.myLearning'}, client:{home:'nav.programOverview'}, coordinator:{home:'nav.operations'}, ta:{home:'nav.assignedCourses'}};
 const navLabel = (r, k) => t((NAV_LABEL[r] && NAV_LABEL[r][k]) || 'nav.'+k);
-const EXTRA_ROUTES = {admin:['program','setup','course','attendance','config','clients','requests','schedule','audit','verify'], coordinator:['course','attendance','verify'], trainer:['course','attendance','verify'], ta:['course','attendance','verify'], client:['course','verify'], participant:['activate','verify']};
+const EXTRA_ROUTES = {admin:['program','setup','course','attendance','config','clients','requests','schedule','audit','verify','profile','user'], coordinator:['course','attendance','verify','profile','user'], trainer:['course','attendance','verify','profile','user'], ta:['course','attendance','verify','profile','user'], client:['course','verify','profile','user'], participant:['activate','verify','profile','user']};
 const DEFAULT_ROUTE = {admin:'home', coordinator:'home', trainer:'home', ta:'home', client:'home', participant:'home'};
 const allowedRoutes = r => NAV[r].map(x=>x[0]).concat(EXTRA_ROUTES[r]);
 
@@ -29,6 +29,8 @@ function onRouteChange(){ V.navOpen = false; V.notifOpen = false; render(); cons
 let NAV_STACK = [];
 const routeKey = h => { const x = String(h||'').replace(/^#\/?/, '').split('?')[0]; return x || ''; };
 function goHref(h){ if (h === ROUTE_H){ render(); return; }
+  if (V.prof && V.prof.dirty) return confirmModal(t('pf.leaveT'), t('pf.leaveQ'), t('pf.leave'), ()=>{ V.prof = null; goHref(h); }, true);
+  V.prof = null;
   if (routeKey(h) !== routeKey(ROUTE_H)){ NAV_STACK.push(ROUTE_H || '#/'+DEFAULT_ROUTE[role()]); if (NAV_STACK.length > 50) NAV_STACK.shift(); } // tab/filter changes on the same page don't add a step
   setHash(h); onRouteChange(); }
 /** Logical parent page, used when there is no earlier page to return to. */
@@ -53,9 +55,9 @@ function parseHash(){ const h = ROUTE_H.replace(/^#\/?/, ''); const [path, qs] =
 const href = (name, id, q) => '#/'+name + (id ? '/'+encodeURIComponent(id) : '') + (q ? '?'+new URLSearchParams(q) : '');
 const go = (name, id, q) => goHref(href(name, id, q));
 
-function setUser(id){
+function setUser(id, actAs){
   NAV_STACK = [];
-  UIP.userId = id; V.navOpen = false; V.notifOpen = false; V.ci = {mode:'code', result:null, openedAt:null}; V.ab = null;
+  UIP.userId = id; UIP.acting = UIP.acting || {}; const uu = user(id); if (uu) UIP.acting[id] = actAs && hasRole(uu, actAs) ? actAs : (UIP.acting[id] && hasRole(uu, UIP.acting[id]) ? UIP.acting[id] : uu.role); V.prof = null; V.navOpen = false; V.notifOpen = false; V.ci = {mode:'code', result:null, openedAt:null}; V.ab = null;
   V.pw = {tab:'overview', course:'all', cohort:null, q:''}; V.cw = {tab:'overview', cohort:null, q:''}; V.rep = {program:null, course:null, cohort:null, q:'', f:'all'};
   saveUI();
 }
@@ -87,7 +89,7 @@ function checkRow(state, title, sub, right=''){ const ic = state==='ok'?'check':
 
 /* ---------- Notifications (derived per role) ---------- */
 function notifications(){
-  const u = me(), r = u.role, list = [];
+  const u = me(), r = role(), list = [];
   const add = (key, txt, link, ts0) => list.push({key, txt, link, ts:ts0||Date.now()});
   if (r==='admin') attentionItems().slice(0,8).forEach(a=>add(a.key, a.text, a.link));
   if (r==='trainer'){
@@ -111,9 +113,10 @@ const liveCourse = cid => { const c = course(cid); return c && !c.archived && pr
 
 /* ---------- Shell ---------- */
 function roleOptions(){
-  return ['admin','coordinator','trainer','ta','client','participant'].map(r=>`<optgroup label="${esc(t('role.'+r))}">${S.users.filter(u=>u.demo && u.role===r).map(u=>{
+  // A multi-role account appears once per role it holds (same account, different acting role)
+  return ['admin','coordinator','trainer','ta','client','participant'].map(r=>`<optgroup label="${esc(t('role.'+r))}">${S.users.filter(u=>u.demo && hasRole(u, r)).map(u=>{
     const extra = r==='client' ? ' — '+L(client(u.clientId).name) : r==='participant' ? ' — '+L(courseOfPart(u.participantId).title) + (inviteStatus(part(u.participantId))!=='completed' ? ' ('+t('notActivated',null,true)+')' : '') : '';
-    return `<option value="${u.id}"${u.id===UIP.userId?' selected':''}>${esc(t('role.'+r))}: ${esc(L(u.name)+extra)}</option>`; }).join('')}</optgroup>`).join('');
+    return `<option value="${u.id}|${r}"${u.id===UIP.userId && role()===r?' selected':''}>${esc(t('role.'+r))}: ${esc(L(u.name)+extra)}</option>`; }).join('')}</optgroup>`).join('');
 }
 function shell(screen, route){
   const r = role(), u = me(), nts = notifications(), seen = new Set(UIP.seen[u.id]||[]), unread = nts.filter(n=>!seen.has(n.key)).length;
@@ -123,7 +126,7 @@ function shell(screen, route){
   return `<div class="app ${V.navOpen?'nav-open':''} ${r==='participant'?'has-bottom':''}">
   <aside class="sidebar no-print" id="sidebar" aria-label="${esc(t('mainNav'))}">
     <div class="brand"><div class="wm">KAUST <b>Academy</b></div><div class="sub">${t('appName')}</div><span class="tag">${t('demoBranding')}</span></div>
-    <nav class="nav"><div class="nav-label">${t('role.'+r)}</div>${navItems}</nav>
+    <nav class="nav"><div class="nav-label">${t('role.'+r)}</div>${navItems}<a href="#/profile" class="nav-profile" ${route==='profile'?'aria-current="page"':''}>${avatarHtml({u, pa:null, email:u.email}, 20)}<span>${t('pf.my')}</span></a></nav>
     <div class="side-foot"><button class="btn btn-sm" data-action="guide">${icon('compass',15)}${t('demoGuide')}</button>
       <button class="btn btn-sm" style="margin-top:8px" data-action="resetDemo">${icon('refresh',15)}${t('resetDemo')}</button>
       <p>${t('sideDisclaimer')}</p>${!STORAGE_OK?`<p style="color:#F5C36A">${t('storageOff')}</p>`:''}</div>
@@ -139,6 +142,7 @@ function shell(screen, route){
       <button class="btn btn-ghost btn-sm" data-action="toggleLang" lang="${LANG==='ar'?'en':'ar'}" aria-label="${esc(t('switchLangLabel'))}">${icon('globe',16)}<span class="hide-sm">${LANG==='ar'?'English':'العربية'}</span></button>
       ${r==='admin' ? `<a class="btn btn-ghost icon-btn" href="#/config" aria-label="${esc(t('nav.config'))}" title="${esc(t('nav.config'))}" ${route==='config'?'aria-current="page"':''}>${icon('sliders',19)}</a>` : ''}
       <div class="bell"><button class="btn btn-ghost icon-btn" data-action="toggleNotif" aria-label="${esc(t('notifications')+(unread?` (${unread})`:''))}" aria-expanded="${V.notifOpen}">${icon('bell',19)}${unread?`<span class="dot" aria-hidden="true">${unread>9?'9+':unread}</span>`:''}</button></div>
+      <a class="btn btn-ghost profile-btn" href="#/profile" title="${esc(t('pf.my'))}" ${route==='profile'?'aria-current="page"':''}>${avatarHtml({u, pa:null, email:u.email}, 28)}<span class="hide-md">${t('pf.my')}</span></a>
       <div class="role-wrap"><label for="roleSel">${t('demoRole')}</label><select id="roleSel" data-change="switchUser" title="${esc(t('roleSwitchTitle'))}">${roleOptions()}</select></div>
       ${V.notifOpen ? notifPanel(nts) : ''}
     </header>
