@@ -20,7 +20,7 @@ SCREENS.sessions = () => {
 SCREENS.attendance = R => {
   const s = sess(R.id); if (!s) return denied(t('notFound'));
   const c = course(s.courseId), r = role();
-  if (!(r==='admin' || (r==='coordinator' && canSeeCourse(c.id)) || (r==='trainer' && isCourseInstructor(c.id, me().id)))) return denied();
+  if (!(r==='admin' || (r==='coordinator' && canSeeCourse(c.id)) || (r==='trainer' && isCourseInstructor(c.id, me().id)) || (r==='ta' && isCourseTA(c.id, me().id)))) return denied();
   const p = program(c.programId), k = sessCounts(s.id), live = s.status==='live', run = can('runSession', s.id), exc = can('attendanceException', s.id), cs = codeState(s);
   const actions = run ? (live ? `<button class="btn btn-teal" data-action="presentMode" data-sid="${s.id}">${icon('maximize',16)}${t('presentMode')}</button><button class="btn btn-danger" data-action="endSession" data-sid="${s.id}">${icon('stop',16)}${t('endSession')}</button>` : s.status==='scheduled' ? `<button class="btn btn-primary btn-lg" data-action="startSession" data-sid="${s.id}">${icon('play',18)}${t('startSession')}</button>` : '') : '';
   const info = `<div class="card card-b"><div class="row between" style="align-items:flex-start;gap:14px"><div style="min-width:0"><div class="row">${sessBadge(s)}${modeBadge(s.mode)}</div>
@@ -52,7 +52,7 @@ function attendeeTable(s){
   const exc = can('attendanceException', s.id), q = (V.att.q||'').toLowerCase();
   const ps = partsOf(s.cohortId).filter(x=>!q || (x.name.en+' '+x.name.ar).toLowerCase().includes(q));
   const rows = ps.map(x=>{ const rr = rec(s.id, x.id);
-    return `<tr><td><div class="cell-main small">${LE(x.name)}</div><div class="cell-sub">${LE(x.title)}</div></td><td>${attBadge(rr, s)}</td><td class="num ltr">${rr?fmtTime(rr.at):'—'}</td><td class="small">${rr?(rr.method==='manual'?`${t('method.manual')}: ${t('mr.'+rr.reason)}${rr.note?`<div class="cell-sub">${esc(rr.note)}</div>`:''}`:t('method.'+rr.method)):'—'}</td>
+    return `<tr><td><div class="cell-main small">${LE(x.name)}</div><div class="cell-sub">${LE(x.title)}</div></td><td>${attBadge(rr, s)}</td><td class="num ltr">${rr?fmtTime(rr.at):'—'}</td><td class="small">${rr?(rr.method==='manual'?`${t('method.manual')}: ${t('mr.'+rr.reason)}${rr.note?`<div class="cell-sub">${esc(rr.note)}</div>`:''}`:methodText(rr)):'—'}</td>
     <td>${exc && !rr && s.status!=='scheduled' ? `<button class="btn btn-sm" data-action="manualCheckin" data-sid="${s.id}" data-pid="${x.id}">${t('manualShort')}</button>`:''}</td></tr>`; }).join('');
   return card(t('attendeeList'), `<div class="card-b" style="padding-bottom:0"><div class="search" style="width:100%">${icon('search',16)}<input class="input" id="attQ" type="search" data-input="attSearch" data-sid="${s.id}" value="${esc(V.att.q||'')}" placeholder="${esc(t('searchParticipants'))}" aria-label="${esc(t('searchParticipants'))}" style="width:100%"></div></div>
     <div id="att-rows"><div class="table-wrap" style="margin-top:10px"><table class="tbl"><thead><tr><th>${t('participant')}</th><th>${t('status')}</th><th class="num">${t('checkinTime')}</th><th>${t('method')}</th><th><span class="sr-only">${t('actions')}</span></th></tr></thead><tbody>${rows || `<tr><td colspan="5">${empty(t('noResults'),'','search')}</td></tr>`}</tbody></table></div></div>`,
@@ -73,7 +73,7 @@ ACT.manualCheckin = el => { const s = sess(el.dataset.sid), absent = partsOf(s.c
   openModal({title:t('manualCheckin'), body:`<form data-submit="manualCheckin" data-sid="${s.id}" novalidate><p class="small muted" style="margin-bottom:14px">${LE(s.title)} · ${esc(dayLabel(sOff(s)))} <span class="ltr">${s.start}</span></p>
     ${field('mpid', t('participant'), selF('mpid', absent.map(x=>[x.id, LE(x.name)]), el.dataset.pid || absent[0].id))}
     ${field('mstatus', t('status'), selF('mstatus', [['present',t('st.present')],['late',t('st.late')]], s.status==='live' && minutesSinceStart(s)>S.settings.checkinWindow ? 'late' : 'present'))}
-    ${field('mreason', t('reason')+' *', selF('mreason', [['',t('chooseReason')]].concat(['qr_failed','device_issue','no_phone','verified_in_person','late_registration','other'].map(k=>[k, t('mr.'+k)])), ''), t('reasonRequired'))}
+    ${field('mreason', t('reason')+' *', selF('mreason', [['',t('chooseReason')]].concat(['location_unavailable','location_inaccurate','qr_failed','device_issue','no_phone','verified_in_person','late_registration','other'].map(k=>[k, t('mr.'+k)])), ''), t('reasonRequired'))}
     ${field('mnote', t('details'), `<textarea class="textarea" id="f-mnote" name="mnote" rows="3" placeholder="${esc(t('notePlaceholder'))}"></textarea>`, t('noteHelp'))}${note(t('manualAuditNote'),'', 'list')}</form>`,
     footer:`<button class="btn" data-action="closeModal">${t('cancel')}</button><button class="btn btn-primary" data-action="submitForm">${t('recordException')}</button>`}); };
 SUB.manualCheckin = form => { const fd = new FormData(form), s = sess(form.dataset.sid), paid = fd.get('mpid'), reason = fd.get('mreason'), nt = String(fd.get('mnote')||'').trim(), errs = {};
@@ -85,15 +85,19 @@ SUB.manualCheckin = form => { const fd = new FormData(form), s = sess(form.datas
 /* ---------- Participant check-in card (embedded in the participant home) ---------- */
 function checkinCard(pa){
   const ch = cohort(pa.cohortId), c = course(ch.courseId), ss = activeSessions(ch.id), ci = V.ci;
-  const live = ss.find(s=>s.status==='live'), next = ss.filter(s=>s.status==='scheduled' && sOff(s)>=0).sort(sessSort)[0];
+  const live = ss.find(s=>s.status==='live'), next = ss.filter(s=>s.status==='scheduled' && sOff(s)>=0).sort(sessSort)[0], early = !live && geoOpenOf(pa);
   if (live && !ci.openedAt) ci.openedAt = Date.now();
+  if (early){ const r0 = rec(early.id, pa.id); return `<div class="ci-card"><div class="ci-top"><div class="row between"><span class="badge" style="background:rgba(255,255,255,.12);color:#fff">${t('geo.openEarly')}</span><span class="xs" style="color:#C9D5E4">${LE(c.title)}</span></div><h2>${LE(early.title)}</h2><div class="meta"><span>${icon('clock',13)}<span class="ltr">${early.start}–${early.end}</span></span><span>${locationHtml(early)}</span></div></div>
+      <div class="ci-body">${r0 && !(V.geo && V.geo.sid===early.id) ? checkinResult({res:'already', rec:r0}, early) : geoBlock(early, pa)}<p class="xs muted" style="margin-top:10px">${t('geo.codeLater')}</p></div></div>`; }
   if (!live) return `<div class="ci-card"><div class="ci-top"><span class="badge" style="background:rgba(255,255,255,.12);color:#fff">${t('ci.noneOpen')}</span><h2>${next ? LE(next.title) : LE(c.title)}</h2>${next?`<div class="meta"><span>${icon('calendar',13)}${esc(dayLabel(sOff(next)))} · <span class="ltr">${next.start}–${next.end}</span></span><span>${locationHtml(next)}</span></div>`:''}</div>
       <div class="ci-body"><p class="small">${next ? t('ci.nextHelp2') : t('ci.programDone')}</p>${next && next.agenda && L(next.agenda) ? `<p class="xs muted" style="margin-top:6px">${t('agenda')}: ${LE(next.agenda)}</p>` : ''}</div></div>`;
   const r = rec(live.id, pa.id);
   const top = `<div class="ci-top"><div class="row between"><span class="badge b-live">${t('st.live')}</span><span class="xs" style="color:#C9D5E4">${LE(c.title)}</span></div><h2>${LE(live.title)}</h2><div class="meta"><span>${icon('clock',13)}<span class="ltr">${live.start}–${live.end}</span></span><span>${locationHtml(live)}</span></div></div>`;
   if (ci.result && ci.result.sid===live.id) return `<div class="ci-card">${top}<div class="ci-body">${checkinResult(ci.result, live)}</div></div>`;
   if (r) return `<div class="ci-card">${top}<div class="ci-body">${checkinResult({res:'already', rec:r}, live)}</div></div>`;
-  return `<div class="ci-card">${top}<div class="ci-body"><form data-submit="ciCode" data-sid="${live.id}" novalidate><label for="ciCodeIn-${live.id}" class="small" style="font-weight:600;display:block;margin-bottom:6px">${live.mode==='virtual'?t('ci.codeLabelVirtual'):t('ci.codeLabel')}</label>
+  if (V.geo && V.geo.sid===live.id && V.geo.result) return `<div class="ci-card">${top}<div class="ci-body">${geoBlock(live, pa)}</div></div>`;
+  const gb = geoReady(live) ? geoBlock(live, pa) + `<div class="or-sep"><span>${t('geo.orCode')}</span></div>` : geoCfg(live) ? geoBlock(live, pa) : '';
+  return `<div class="ci-card">${top}<div class="ci-body">${gb}<form data-submit="ciCode" data-sid="${live.id}" novalidate><label for="ciCodeIn-${live.id}" class="small" style="font-weight:600;display:block;margin-bottom:6px">${live.mode==='virtual'?t('ci.codeLabelVirtual'):t('ci.codeLabel')}</label>
         <input class="code-input" id="ciCodeIn-${live.id}" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000 000" aria-describedby="ciCodeErr-${live.id} ciRule-${live.id}">
         <p class="err small ci-err" id="ciCodeErr-${live.id}" role="alert" style="color:var(--bad);font-weight:600;min-height:18px;margin-top:4px"></p>
         <button class="btn btn-teal btn-checkin" type="submit">${icon('login',20)}${t('ci.submit')}</button></form>

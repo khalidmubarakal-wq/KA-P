@@ -13,12 +13,26 @@ SCREENS.mycourses = () => {
 /** Course card with the instructor checklist: Pre-assessment, Post-assessment, Activities, Materials. */
 function contentTask(cid, withOpen){
   const c = course(cid), ct = contentStatus(cid), p = program(c.programId), mine = can('content', cid);
-  const item = (k, tab) => `<div class="ti"><div class="l">${t('ctl.'+k)}</div><div class="row between" style="margin-top:4px">${ctBadge(ct.items[k])}${mine?`<a class="xs" href="${href('course',cid,{tab})}">${ct.items[k]==='ready'?t('view'):ct.items[k]==='not_started'?t('add'):t('continue')}</a>`:''}</div></div>`;
-  return `<div class="task"><div class="row between"><div style="min-width:0"><div class="xs muted">${LE(client(p.clientId)?.name)} › ${LE(p.title)}</div><h3 style="margin-top:2px">${LE(c.title)}</h3></div><div class="row">${ct.complete?badge('b-ok', t('contentReady')):badge('b-info', t('contentDoneN',{n:ct.done}))}${withOpen?`<a class="btn btn-sm btn-primary" href="${href('course',cid)}">${t('openCourse')}</a>`:''}</div></div>
+  const item = k => { const st = ct.items[k], lbl = `${t('ctl.'+k)}${k==='survey'?` <span class="xs muted">(${t('optional')})</span>`:''}`;
+    return mine ? `<button type="button" class="ti ti-btn" data-action="ctOpen" data-cid="${cid}" data-k="${k}" aria-label="${esc(t('ctl.'+k)+' — '+t('ct.'+st)+' — '+(contentDone(st)?t('view'):st==='not_started'?t('start'):t('continue')))}"><span class="l">${lbl}</span><span class="row between" style="margin-top:4px">${ctBadge(st)}<span class="xs ti-go">${contentDone(st)?t('view'):st==='not_started'?t('start'):t('continue')} ›</span></span></button>`
+      : `<div class="ti"><div class="l">${lbl}</div><div class="row between" style="margin-top:4px">${ctBadge(st)}</div></div>`; };
+  return `<div class="task"><div class="row between"><div style="min-width:0"><div class="xs muted">${LE(client(p.clientId)?.name)} › ${LE(p.title)}</div><h3 style="margin-top:2px">${LE(c.title)}</h3></div><div class="row">${ct.complete?badge('b-ok', t('contentReady')):badge('b-info', t('contentDoneN2',{n:ct.done, m:ct.of}))}${withOpen?`<a class="btn btn-sm btn-primary" href="${href('course',cid)}">${t('openCourse')}</a>`:''}</div></div>
   <div class="meta" style="margin-top:6px"><span>${icon('calendar',13)}${esc(courseRangeTxt(cid))}</span><span>${icon('users',13)}${t('nParticipants',{n:courseParticipants(cid).length})}</span><span>${icon('list',13)}${t('nSessions',{n:courseSessions(cid).length})}</span></div>
-  <div class="task-grid">${item('pre','assessments')}${item('post','assessments')}${item('activities','activities')}${item('materials','materials')}</div>
+  <div class="task-grid">${CONTENT_KEYS.map(item).join('')}</div>
   ${mine ? materialStrip(cid) : ''}</div>`;
 }
+/** Checklist item → straight into the right editor or upload flow (nothing is saved until the instructor saves). */
+ACT.ctOpen = el => { const cid = el.dataset.cid, k = el.dataset.k, c = course(cid); if (!c) return;
+  if (!can('content', cid)) return go('course', cid);
+  const tab = {materials:'materials', pre:'assessments', post:'assessments', survey:'surveys'}[k];
+  go('course', cid, {tab});
+  if (k==='materials'){ if (!materialCounts(cid).all) ACT.addMaterial({dataset:{cid}}); return; }
+  if (k==='pre' || k==='post'){ const a = curAssessment(cid, k);
+    if (a && isLocked(a)) return toast(t('lockedToast'),'info');
+    if (a) openBuilder(a); else { const n = newAssessment(c, k); V.ab = {courseId:cid, aid:null, kind:'assessment', pending:n, draft:JSON.parse(JSON.stringify(n)), q:blankQ('mcq', c.objectives[0]?.id)}; render(); }
+    $('#f-qtext')?.focus(); return; }
+  if (k==='survey'){ const ss = surveysOf(cid), d = ss.find(s=>s.status==='draft' && !svResponses(s.id).length);
+    if (!ss.length) ACT.svNew({dataset:{cid, k:'starter'}}); else if (d && ss.length===1) svOpenEditor(d); } };
 /** Compact, prominent materials summary with the main action. */
 function materialCounts(cid){ const ch = courseCohort(cid), ms = ch ? materialsFor(ch.id).filter(m=>m.state!=='archived') : []; const n = k => ms.filter(m=>matState(m)===k).length; return {all:ms.length, pub:n('available'), draft:n('draft'), sched:n('scheduled')}; }
 function materialStrip(cid){ const m = materialCounts(cid);
@@ -27,14 +41,15 @@ function materialStrip(cid){ const m = materialCounts(cid);
 const COURSE_TABS = {
   admin:['overview','schedule','participants','progress'],
   coordinator:['overview','participants','sessions','progress'],
-  trainer:['overview','materials','assessments','activities','sessions'],
-  client:['overview','progress'],
+  trainer:['overview','materials','assessments','surveys','activities','sessions'],
+  ta:['overview','participants','sessions'],
+  client:['overview','materials','progress'],
 };
 SCREENS.course = R => {
   const c = course(R.id), r = role();
   if (!c || !COURSE_TABS[r] || !canSeeCourse(c.id) || (r!=='admin' && !liveCourse(c.id))) return denied();
   const list = COURSE_TABS[r]; let tab = R.q.tab || (V.cw.cid===c.id ? V.cw.tab : 'overview'); if (!list.includes(tab)) tab = 'overview';
-  if (V.cw.cid !== c.id){ V.cw = {tab, cid:c.id}; V.ab = null; V.pw.q = ''; }
+  if (V.cw.cid !== c.id){ V.cw = {tab, cid:c.id}; V.ab = null; V.sv = null; V.pw.q = ''; }
   V.cw.tab = tab; V.cw.cohort = courseCohort(c.id)?.id || null;
   const p = program(c.programId);
   const actions = r==='admin' ? `<button class="btn" data-action="editCourse" data-cid="${c.id}">${icon('edit',16)}${t('editCourse')}</button><button class="btn" data-action="editCourse" data-cid="${c.id}" data-focus="team">${icon('users',16)}${t('editTeam')}</button>`
@@ -48,9 +63,10 @@ SCREENS.course = R => {
   if (tab==='participants') body = participantsPanel(c.id);
   if (tab==='materials') body = materialsTab(c);
   if (tab==='assessments') body = assessmentsTab(c);
+  if (tab==='surveys') body = surveysTab(c);
   if (tab==='activities') body = activitiesTab(c);
   if (tab==='sessions') body = courseAttendance(c);
-  if (tab==='progress') body = completionPanel(c.id);
+  if (tab==='progress') body = completionPanel(c.id) + (()=>{ const sv = surveySummary(c.id); return sv ? `<div style="margin-top:16px">${sv}</div>` : ''; })();
   const sub = `${LE(client(p.clientId)?.name)} › ${LE(p.title)} · ${t('instructorTeam')}: ${courseInstructors(c.id).length?esc(courseTeamText(c.id)):`<span class="conflict">${t('noTrainer')}</span>`} · ${esc(courseRangeTxt(c.id))} ${stBadge(courseStatus(c.id))}`;
   return {title:L(c.title), html: pageHead(LE(c.title), sub, actions, crumbs) + tabs('cw', list.map(k=>[k, t('cwt.'+k)]), tab) + `<div role="tabpanel">${body}</div>`};
 };
@@ -72,7 +88,7 @@ function setupChecklist(cid){
   const su = adminSetup(cid), ct = contentStatus(cid), tabFor = {trainer:'overview', schedule:'schedule', rooms:'schedule', conflicts:'schedule', participants:'participants', invites:'participants'};
   const adminRows = su.items.map(i=>checkRow(i.ok?'ok':i.soft?'warn':'no', i.k==='conflicts'? (i.ok?t('rd.conflicts'):t('rd.conflictsBad',{n:i.n})) : i.k==='invites' ? (i.ok?t('rd.invites'):t('rd.invitesBad',{n:i.n})) : t('rd.'+i.k), i.ok?'':t('rdh.'+i.k),
     i.ok ? '' : i.k==='trainer' ? `<button class="btn btn-sm" data-action="editCourse" data-cid="${cid}">${t('fix')}</button>` : `<a class="btn btn-sm" href="${href('course',cid,{tab:tabFor[i.k]})}">${t('fix')}</a>`)).join('');
-  const trRows = ['pre','post','activities','materials'].map(k=>checkRow(ct.items[k]==='ready'?'ok':ct.items[k]==='in_progress'?'prog':'warn', t('ctl.'+k), '', ctBadge(ct.items[k]))).join('');
+  const trRows = CONTENT_KEYS.map(k=>checkRow(contentDone(ct.items[k])?'ok':ct.items[k]==='draft'?'prog':'warn', t('ctl.'+k) + (k==='survey'?` (${t('optional')})`:''), '', ctBadge(ct.items[k]))).join('');
   return `<div class="stack">${card(t('setupChecklist'), `<ul class="checklist">${adminRows}</ul>`, {right:ownerTag('admin')})}${card(t('instructorContent'), `<ul class="checklist">${trRows}</ul><p class="xs muted" style="margin-top:8px">${t('contentOwnedByTrainer')}</p>`, {right:ownerTag('trainer')})}</div>`;
 }
 /** Read-only days → sessions with time, location and agenda. */
@@ -365,8 +381,14 @@ ACT.reviewSub = el => { const k = el.dataset.aid+':'+el.dataset.pid; S.submissio
 const matAccess = m => m.access || (m.allowDownload ? 'both' : 'view');
 const matViewable = m => matAccess(m)!=='download';
 const matDownloadable = m => matAccess(m)!=='view';
+/** Who may open a material at all: staff of the course; enrolled participants once published; the client only when published and shared. */
+function matReadable(m){ if (!m) return false; const r = role();
+  if (r==='participant') return matState(m)==='available' && !!myEnrollments().find(x=>x.cohortId===m.cohortId);
+  if (r==='client') return matState(m)==='available' && !!m.clientVisible && canSeeCourse(m.courseId);
+  return canSeeCourse(m.courseId); }
 function materialsTab(c){
   const mine = can('content', c.id), chid = V.cw.cohort; if (!chid) return card('', empty(t('noDays'), '', 'book'));
+  if (role()==='client'){ const vis = materialsFor(chid).filter(m=>m.clientVisible && matState(m)==='available'); return `<p class="small muted" style="margin-bottom:10px">${t('clientMatIntro')}</p>` + (vis.length ? materialsByDay(chid, vis, 'client') : card('', empty(t('clientMatEmpty'), t('clientMatEmptyD'), 'book'))); }
   const ms = materialsFor(chid).filter(m=>m.state!=='archived'), arch = materialsFor(chid).filter(m=>m.state==='archived');
   const mc = materialCounts(c.id);
   const head = `<div class="row" style="gap:6px;margin-bottom:10px">${badge('b-ok', t('ms.available')+': '+mc.pub, false)}${badge('', t('ms.draft')+': '+mc.draft, false)}${mc.sched?badge('b-info', t('ms.scheduled')+': '+mc.sched, false):''}</div><div class="section-label"><p class="small muted">${t('materialsIntro2')}</p>${mine?`<button class="btn btn-primary" data-action="addMaterial" data-cid="${c.id}">${icon('upload',16)}${t('uploadMaterial')}</button>`:ownerTag('trainer')}</div>`;
@@ -380,7 +402,7 @@ function materialsByDay(chid, ms, mode){
     return card(`<span class="day-h"><span class="chip">${t('dayN',{n:i+1})}</span>${esc(fmtDay(d.dayOffset))}</span>`, rows.map(x=>`<div class="row between" style="margin:8px 0 2px"><h3 class="small muted">${LE(x.s.title)} · <span class="ltr">${x.s.start}</span></h3>${mode==='trainer'?`<button class="btn btn-sm btn-ghost" data-action="addMaterial" data-cid="${x.s.courseId}" data-sid="${x.s.id}">${icon('plus',13)}${t('addHere')}</button>`:''}</div>${x.ms.map(m=>materialRow(m, mode)).join('') || `<p class="xs muted">${t('noMaterialsSession')}</p>`}`).join('')); }).join('')}</div>`;
 }
 function materialRow(m, mode){
-  const st = matState(m), staff = mode!=='participant', hasFile = !m.sample && m.type!=='link';
+  const st = matState(m), staff = !['participant','client'].includes(mode), hasFile = !m.sample && m.type!=='link';
   const canOpen = staff || (st==='available' && (matViewable(m) || m.type==='link')), canDl = hasFile && (staff || (st==='available' && matDownloadable(m)));
   return `<div class="item-row"><span class="type-ico t-${m.type==='image'||m.type==='text'?'docx':m.type}" aria-hidden="true">${m.type==='video'?icon('play',16):m.type==='link'?icon('link',16):(m.type==='image'?'IMG':m.type==='text'?'TXT':m.type.toUpperCase())}</span>
   <div class="grow"><div class="cell-main">${LE(m.title)}</div><div class="row xs muted" style="margin-top:3px"><span>${t('type.'+m.type)}</span><span>·</span><span class="ltr">${esc(m.size||'—')}</span>${m.fileName?`<span>·</span><span class="ltr">${esc(m.fileName)}</span>`:''}${m.sample?`<span>·</span><span>${t('sampleRecordShort')}</span>`:''}${!m.sample && m.fileKey && !m.persisted?`<span>·</span><span class="conflict">${t('sessionOnly')}</span>`:''}</div></div>
@@ -403,6 +425,7 @@ function materialForm(m, c, sid){
     ${field('mtitle', t('displayName')+' *', inp('mtitle', m?L(m.title):''))}
     ${field('msess', t('daySessionOpt'), selF('msess', [['',t('generalNoSession')]].concat(ss.map(s=>[s.id, `${t('dayN',{n:dayIndex(s)},true)} · ${esc(fmtDay(sOff(s)))} ${s.start} — ${LE(s.title)}`])), cur), t('daySessionHelp'))}
     <div class="form-grid">${field('maccess', t('participantsCan'), selF('maccess', [['view',t('acc.view')],['download',t('acc.download')],['both',t('acc.both')]], m ? matAccess(m) : (S.settings.downloadsDefault?'both':'view')), t('accessHelp'))}
+<div class="field"><span class="lbl">${t('clientVisLbl')}</span><label class="check"><input type="checkbox" name="mclient" ${m && m.clientVisible?'checked':''}>${t('clientVisOpt')}</label><span class="help">${t('clientVisHelp')}</span></div>
 <input type="hidden" name="mrel" value="${rel}">${m?`<div class="field"><span class="lbl">${t('visibility')}</span>${matBadge(m)}</div>`:''}</div>
     <details class="explain" ${rel==='schedule'?'open':''}><summary>${t('scheduleForLater')}</summary><label class="check" style="margin-top:8px"><input type="checkbox" name="msched" ${rel==='schedule'?'checked':''}>${t('scheduleInstead')}</label><div class="form-grid" style="margin-top:8px">${field('mdate', t('releaseDate'), inp('mdate', isoOf(m && m.releaseOffset!=null ? m.releaseOffset : (cur ? sOff(sess(cur)) : 0)), 'date'))}${field('mtime', t('releaseTime'), inp('mtime', m?.releaseTime||'08:00', 'time'))}</div></details></form>`,
   footer:`<button class="btn" data-action="closeModal">${t('cancel')}</button>${m?`<button class="btn btn-ghost" data-action="archiveMaterial" data-mid="${m.id}">${t('archive')}</button>`:''}<button class="btn" data-action="previewPending" data-mid="${m?m.id:''}">${icon('eye',14)}${t('preview')}</button><button class="btn" data-action="submitMaterial" data-k="draft">${t('saveAsDraft')}</button><button class="btn btn-primary" data-action="submitMaterial" data-k="now">${icon('check',14)}${t('publish')}</button>`});
@@ -426,7 +449,7 @@ SUB.saveMaterial = async form => {
   if (MAT_FILE){ const key = 'f_'+m.id+'_'+Date.now(); const ok = await FILES.put(key, MAT_FILE); Object.assign(m, {fileKey:key, fileName:MAT_FILE.name, mime:MAT_FILE.type, size:fmtSize(MAT_FILE.size), persisted:ok, sample:false, type:typeFromName(MAT_FILE.name, MAT_FILE.type)}); }
   else if (isLink) Object.assign(m, {type:'link', size:'—', sample:false});
   const state = f.mrel==='now' ? 'available' : f.mrel==='schedule' ? 'scheduled' : 'draft';
-  Object.assign(m, {sessionId:f.msess||null, title: Object.assign({}, m.title||{}, {[LANG]:f.mtitle.trim()}), url, access:f.maccess, allowDownload: f.maccess!=='view', state, releaseOffset: state==='scheduled'?offOf(f.mdate):null, releaseTime: state==='scheduled'?f.mtime:null, updatedAt:Date.now()});
+  Object.assign(m, {sessionId:f.msess||null, title: Object.assign({}, m.title||{}, {[LANG]:f.mtitle.trim()}), url, access:f.maccess, allowDownload: f.maccess!=='view', clientVisible: !!f.mclient, state, releaseOffset: state==='scheduled'?offOf(f.mdate):null, releaseTime: state==='scheduled'?f.mtime:null, updatedAt:Date.now()});
   const o = LANG==='ar'?'en':'ar'; if (!m.title[o]) m.title[o] = m.title[LANG];
   addLog(state==='available'?'material_release':'material_save', {course:c.id, mid:m.id}); const persisted = m.persisted; MAT_FILE = null;
   closeModal(); save(); render(); toast((isNew?t('materialAdded'):t('saved')) + ' · ' + t('ms.'+state) + (m.fileKey ? ' · ' + (persisted ? t('fileSavedLocal') : t('fileSessionOnly')) : ''), m.fileKey && !persisted ? 'warn' : 'ok');
@@ -434,7 +457,8 @@ SUB.saveMaterial = async form => {
 ACT.releaseMaterial = el => { const m = byId(S.materials, el.dataset.mid); m.state = 'available'; m.releaseOffset = null; m.updatedAt = Date.now(); addLog('material_release', {course:m.courseId, mid:m.id}); save(); render(); toast(t('materialReleased',{n:L(m.title)})); };
 ACT.archiveMaterial = el => { const m = byId(S.materials, el.dataset.mid); m.state = 'archived'; addLog('material_archive', {course:m.courseId, mid:m.id}); closeModal(); save(); render(); toast(t('archivedToast')); };
 ACT.previewMaterial = async el => {
-  const m = byId(S.materials, el.dataset.mid), staff = role()!=='participant', canDl = staff || matDownloadable(m);
+  const m = byId(S.materials, el.dataset.mid), staff = !['participant','client'].includes(role()), canDl = staff || matDownloadable(m);
+  if (!matReadable(m)) return toast(t('matNotAvailable'),'warn');
   if (m.type==='link') return openModal({title:LE(m.title), body: m.url ? `${note(t('linkOpensNew'),'', 'link')}<p class="small ltr" style="margin-top:10px;word-break:break-all">${esc(m.url)}</p>` : note(t('sampleLink'),'sim','link'), footer: m.url ? `<a class="btn btn-primary" href="${esc(m.url)}" target="_blank" rel="noopener noreferrer">${icon('link',15)}${t('openLink')}</a>` : `<button class="btn btn-primary" data-action="closeModal">${t('close')}</button>`});
   if (!staff && !matViewable(m)) return toast(t('downloadOnlyNote'),'info');
   if (m.sample) return openModal({title:LE(m.title), size:'lg', body:`${note(t('sampleRecordNote'),'sim','info')}<div style="margin-top:12px;background:#fff;border:1px solid var(--g-200);border-radius:8px;padding:28px;min-height:220px"><div class="xs muted">${t('type.'+m.type)} · ${t('placeholderPreview')}</div><h2 style="margin:10px 0">${LE(m.title)}</h2>${[92,100,84,70,96].map(w=>`<div style="height:9px;background:var(--g-100);border-radius:4px;margin:9px 0;width:${w}%"></div>`).join('')}</div>`, footer:`<span class="xs muted" style="margin-inline-end:auto">${t('noFileToDownload')}</span><button class="btn btn-primary" data-action="closeModal">${t('close')}</button>`});
@@ -452,7 +476,7 @@ async function openFilePreview(blob, name, canDl, banner, m){
   openModal({title:esc(m ? L(m.title) : name), size:'xl', onClose:()=>setTimeout(()=>URL.revokeObjectURL(url), 1000), body:`${banner?note(banner,'sim','eye')+'<div style="height:10px"></div>':''}<div class="row" style="margin-bottom:10px"><span class="small ltr">${esc(name)}</span><span class="xs muted">${fmtSize(blob.size)}</span>${badge('b-ok', t('actualFile'), false)}</div>${inner}`,
     footer:`${canDl?`<a class="btn btn-primary" href="${url}" download="${esc(name)}">${icon('download',15)}${t('downloadFile')}</a>`:`<span class="xs muted" style="margin-inline-end:auto">${t('viewOnlyNote')}</span>`}<button class="btn" data-action="closeModal">${t('close')}</button>`});
 }
-ACT.downloadMaterial = async el => { const m = byId(S.materials, el.dataset.mid); if (role()==='participant' && !matDownloadable(m)) return toast(t('viewOnlyNote'),'warn');
+ACT.downloadMaterial = async el => { const m = byId(S.materials, el.dataset.mid); if (!matReadable(m)) return toast(t('matNotAvailable'),'warn'); if (['participant','client'].includes(role()) && !matDownloadable(m)) return toast(t('viewOnlyNote'),'warn');
   const blob = await FILES.get(m.fileKey); if (!blob) return toast(t('fileMissingShort'),'warn');
   const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = m.fileName || 'file'; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1500);
   toast(t('downloadStarted',{n:m.fileName}) + (inFrame()?' · '+t('downloadMaybeBlocked'):''), 'info'); };

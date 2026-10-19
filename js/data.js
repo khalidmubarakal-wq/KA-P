@@ -54,9 +54,9 @@ function seed(){
     },
     clients:[{id:'c1', name:T('Sahil Energy Services','شركة الساحل لخدمات الطاقة'), contactName:'Waleed Al-Sahli', contactEmail:'w.sahli@sahil-energy.example', contactPhone:'+966 5x xxx 1000', createdAt: ts(-60,'09:00')},{id:'c2', name:T('Marsa Logistics Group','مجموعة مرسى للخدمات اللوجستية'), contactName:'Rana Khoury', contactEmail:'r.khoury@marsa-logistics.example', contactPhone:'+966 5x xxx 2000', createdAt: ts(-45,'09:00')}],
     rooms:[
-      {id:'r1', name:T('Training Room A-101','قاعة التدريب A-101'), building:T('Academy Building A (sample)','مبنى الأكاديمية A (مثال)'), capacity:30, virtual:false},
-      {id:'r2', name:T('Seminar Room B-204','قاعة الندوات B-204'), building:T('Academy Building B (sample)','مبنى الأكاديمية B (مثال)'), capacity:24, virtual:false},
-      {id:'r3', name:T('Innovation Lab C-12','مختبر الابتكار C-12'), building:T('Academy Building C (sample)','مبنى الأكاديمية C (مثال)'), capacity:18, virtual:false},
+      {id:'r1', name:T('Training Room A-101','قاعة التدريب A-101'), building:T('Academy Building A (sample)','مبنى الأكاديمية A (مثال)'), capacity:30, virtual:false, geo:{lat:22.30955, lng:39.10465, label:T('Academy Building A — sample pin','مبنى الأكاديمية A — موقع تجريبي')}},
+      {id:'r2', name:T('Seminar Room B-204','قاعة الندوات B-204'), building:T('Academy Building B (sample)','مبنى الأكاديمية B (مثال)'), capacity:24, virtual:false, geo:{lat:22.31190, lng:39.10230, label:T('Academy Building B — sample pin','مبنى الأكاديمية B — موقع تجريبي')}},
+      {id:'r3', name:T('Innovation Lab C-12','مختبر الابتكار C-12'), building:T('Academy Building C (sample)','مبنى الأكاديمية C (مثال)'), capacity:18, virtual:false, geo:{lat:22.30720, lng:39.10790, label:T('Academy Building C — sample pin','مبنى الأكاديمية C — موقع تجريبي')}},
       {id:'r4', name:T('Virtual room (simulated meeting)','قاعة افتراضية (اجتماع محاكى)'), building:T('Online','عبر الإنترنت'), capacity:100, virtual:true},
     ],
     users:[
@@ -98,7 +98,7 @@ function seed(){
       {id:'CH4', courseId:'CR4', name:T('Cohort 1','الدفعة 1'), archived:false},
     ],
     days:[], sessions:[], participants:[], attendance:{}, rejected:{}, assessments:[], attempts:[], activities:[], submissions:{}, drafts:{}, materials:[], evaluations:[], certs:{}, requests:[], log:[],
-    settings:{checkinWindow:15, minAttendance:80, requirePost:true, requireFinal:true, materialDays:90, downloadsDefault:false, defaultLang:'ar', contentReview:false, clientIndividual:false, coordEditParticipants:true, coordTemplates:true, geofenceRadius:150},
+    settings:{checkinWindow:15, minAttendance:80, requirePost:true, requireFinal:true, materialDays:90, downloadsDefault:false, defaultLang:'ar', contentReview:false, clientIndividual:false, coordEditParticipants:true, coordTemplates:true, geofenceRadius:100, geoAccuracy:50, geoBefore:30},
     certTpl:{bgKey:null, bgName:null, bgPersisted:false,
       desc:T('has successfully completed the course below ({{duration}}) as part of {{program_title}}.','قد أتمّ بنجاح الدورة التالية ({{duration}}) ضمن {{program_title}}.'),
       fields:{

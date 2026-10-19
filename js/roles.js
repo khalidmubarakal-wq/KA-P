@@ -7,7 +7,7 @@
    ===================================================================== */
 SCREENS.home = () => {
   const r = role();
-  if (r==='admin') return homeAdmin(); if (r==='coordinator') return homeCoord(); if (r==='trainer') return homeTrainer(); if (r==='client') return homeClient();
+  if (r==='admin') return homeAdmin(); if (r==='coordinator') return homeCoord(); if (r==='trainer') return homeTrainer(); if (r==='ta') return homeTA(); if (r==='client') return homeClient();
   return homeParticipant();
 };
 
@@ -66,7 +66,6 @@ function homeTrainer(){
   const upcoming = S.sessions.filter(s=>cs.some(c=>c.id===s.courseId) && sessionInstructors(s).includes(u.id) && sOff(s)>0 && sOff(s)<=14 && s.status==='scheduled').sort(sessSort).slice(0,4);
   const next = [];
   today.filter(s=>s.status!=='ended').forEach(s=>next.push(`<li class="row between" style="flex-wrap:nowrap;gap:10px"><span class="small">${s.status==='live'?t('na2.manage'):t('na2.start')}: <b>${LE(s.title)}</b> <span class="ltr">${s.start}</span></span><a class="btn btn-sm btn-primary" href="${href('attendance',s.id)}">${t('open')}</a></li>`));
-  cs.forEach(c=>{ const ci = contentStatus(c.id).items; ['pre','post','activities','materials'].filter(k=>ci[k]!=='ready').forEach(k=>next.push(`<li class="row between" style="flex-wrap:nowrap;gap:10px"><span class="small">${t('na.'+k)} — <b>${LE(c.title)}</b></span><a class="btn btn-sm" href="${href('course',c.id,{tab:k==='pre'||k==='post'?'assessments':k})}">${ci[k]==='not_started'?t('start'):t('continue')}</a></li>`)); });
   S.activities.filter(a=>cs.some(c=>c.id===a.courseId) && a.status==='published' && a.type!=='quiz').forEach(a=>{ const n = courseParticipants(a.courseId).filter(x=>subState(a,x.id)==='submitted').length; if (n) next.push(`<li class="row between" style="flex-wrap:nowrap;gap:10px"><span class="small">${t('na2.review',{n})}: <b>${LE(a.title)}</b></span><a class="btn btn-sm" href="${href('course',a.courseId,{tab:'activities'})}">${t('open')}</a></li>`); });
   const html = pageHead(t('home.trainer',{n:L(u.name)}), t('home.trainerSub2'))
     + `<div class="grid g-main"><div class="stack"><h2>${t('nav.mycourses')}</h2>${cs.length ? cs.map(c=>contentTask(c.id, true)).join('') : card('', empty(t('noAssigned'), t('noAssignedHint'), 'book'))}</div>
@@ -75,6 +74,20 @@ function homeTrainer(){
       ${card(t('nextSteps'), next.length ? `<ul class="list">${next.slice(0,8).join('')}</ul>` : `<p class="small muted">${t('allCaughtUp')}</p>`)}
       ${note(t('trainerStructureNote'),'', 'lock')}</div></div>`;
   return {title:t('nav.home'), html};
+}
+
+/* ---------- Teaching Assistant: assigned courses, today's sessions, attendance support ---------- */
+function homeTA(){
+  const u = me(), cs = visibleCourses(), ss = S.sessions.filter(s=>cs.some(c=>c.id===s.courseId) && s.status!=='cancelled');
+  const today = ss.filter(s=>sOff(s)===0).sort(sessSort), next = ss.filter(s=>sOff(s)>0 && sOff(s)<=14 && s.status==='scheduled').sort(sessSort).slice(0,4);
+  const courseCard = c => { const P = courseProgress(c.id); return `<div class="task"><div class="row between"><div style="min-width:0"><div class="xs muted">${LE(client(program(c.programId).clientId)?.name)} › ${LE(program(c.programId).title)}</div><h3 style="margin-top:2px">${LE(c.title)}</h3></div><a class="btn btn-sm btn-primary" href="${href('course',c.id)}">${t('openCourse')}</a></div>
+    <div class="meta" style="margin-top:6px"><span>${icon('calendar',13)}${esc(courseRangeTxt(c.id))}</span><span>${icon('user',13)}${esc(courseTeamText(c.id))}</span><span>${icon('users',13)}${t('nParticipants',{n:P.ps.length})}</span><span>${icon('checkCircle',13)}${t('attendance')}: ${pctTxt(P.attPct)}</span></div>
+    <div class="row" style="margin-top:10px"><a class="btn btn-sm" href="${href('course',c.id,{tab:'participants'})}">${icon('users',14)}${t('cwt.participants')}</a><a class="btn btn-sm" href="${href('course',c.id,{tab:'sessions'})}">${icon('checkCircle',14)}${t('cwt.sessions')}</a></div></div>`; };
+  const sessList = list => `<ul class="list">${list.map(s=>`<li class="row between" style="flex-wrap:nowrap;gap:10px"><div style="min-width:0"><div class="small cell-main">${LE(s.title)}</div><div class="xs muted">${esc(dayLabel(sOff(s)))} · <span class="ltr">${s.start}–${s.end}</span> · ${locationHtml(s)}</div></div><div class="row" style="flex-wrap:nowrap">${sessBadge(s)}<a class="btn btn-sm" href="${href('attendance',s.id)}">${t('open')}</a></div></li>`).join('')}</ul>`;
+  const html = pageHead(t('home.ta',{n:L(u.name).split(' ')[0]}), t('home.taSub'))
+    + `<div class="grid g-main"><div class="stack"><h2>${t('nav.assignedCourses')}</h2>${cs.length ? cs.map(courseCard).join('') : card('', empty(t('ta.noCourses'), t('ta.noCoursesHint'), 'book'))}</div>
+    <div class="stack">${card(t('sg.today'), today.length ? sessList(today) : `<p class="small muted">${t('sgEmpty.today')}</p>`)}${card(t('sg.upcoming'), next.length ? sessList(next) : `<p class="small muted">${t('sgEmpty.upcoming')}</p>`)}${note(t('ta.scopeNote'),'', 'lock')}</div></div>`;
+  return {title:navLabel('ta','home'), html};
 }
 
 /* ---------- Client Coordinator: own organization only, group results by default ---------- */
@@ -119,7 +132,7 @@ function participantTodo(pa){
       btn: subDone(st) ? '' : a.type==='quiz' ? `<button class="btn btn-sm btn-primary" data-action="startQuiz" data-aid="${a.id}">${t('startQuiz')}</button>` : `<button class="btn btn-sm btn-primary" data-action="submitActivity" data-aid="${a.id}">${st==='progress'?t('continue'):t('open')}</button>`}); });
   if (S.settings.requireFinal){ const fin = evalsOf(ch.id, pa.id).find(e=>e.kind==='final'), open = run!=='not_started' && run!=='none';
     items.push({k:'final', req:true, title:t('finalEvalTitle'), sub: fin ? t('submittedAt',{t:fmtDT(fin.at)}) : open ? t('finalTodoHelp') : t('finalNotYet'), state: fin ? 'completed' : open ? 'open' : 'locked', due: cohortEnd(ch.id), btn: !fin && open ? `<button class="btn btn-sm btn-primary" data-action="openEval" data-k="final" data-pid="${pa.id}">${t('evaluate')}</button>` : ''}); }
-  return items;
+  return items.concat(surveyTodos(pa));
 }
 const TODO_BADGE = {completed:['b-ok','as.completed'], open:['b-info','as.open'], locked:['','as.notOpen'], pending:['','as.pending'], progress:['b-info','as.progress'], submitted:['b-teal','as.submitted'], overdue:['b-bad','as.overdue']};
 const todoBadge = st => badge(TODO_BADGE[st][0], t(TODO_BADGE[st][1]), st!=='locked');
@@ -129,9 +142,11 @@ const courseOfPa = pa => course(cohort(pa.cohortId).courseId);
 /** Sessions today for a participant enrollment (not cancelled). */
 const todayOf = pa => activeSessions(pa.cohortId).filter(s=>sOff(s)===0);
 const liveOf = pa => activeSessions(pa.cohortId).find(s=>s.status==='live');
+/** An in-person session whose location check-in window is open even though the instructor hasn't started it yet. */
+const geoOpenOf = pa => !liveOf(pa) && activeSessions(pa.cohortId).find(s=>sOff(s)===0 && s.status==='scheduled' && geoReady(s) && geoWindow(s)==='open');
 /** The single most useful next step for one enrollment. */
 function nextRequired(pa){
-  const live = liveOf(pa);
+  const live = liveOf(pa) || geoOpenOf(pa);
   if (live && !rec(live.id, pa.id)) return {rank:0, title:t('nra.checkin',{s:L(live.title)}), sub:t('nra.checkinSub'), btn:`<a class="btn btn-teal" href="#/checkin">${icon('login',16)}${t('checkInNow')}</a>`};
   const items = participantTodo(pa).filter(i=>i.btn), rank = {overdue:1, open:2, progress:2, pending:3};
   items.sort((a,b)=>(rank[a.state]??4)-(rank[b.state]??4) || (a.due??99)-(b.due??99));
@@ -144,7 +159,8 @@ const pubMaterials = pa => materialsFor(pa.cohortId).filter(m=>matState(m)==='av
 /** One row per session today: time, place, status and the check-in action. */
 function todayRow(pa, s, inline){
   const r = rec(s.id, pa.id), c = courseOfPa(pa);
-  const act = s.status==='live' ? (r ? attBadge(r, s) : inline ? `<span class="xs" style="color:var(--teal-700);font-weight:600">${t('enterCodeBelow')}</span>` : `<a class="btn btn-sm btn-teal" href="#/checkin">${icon('login',14)}${t('checkInNow')}</a>`)
+  const geoNow = s.status==='scheduled' && !r && geoReady(s) && geoWindow(s)==='open';
+  const act = r && s.status!=='live' ? attBadge(r, s) : geoNow ? (inline ? `<span class="xs" style="color:var(--teal-700);font-weight:600">${t('geo.checkInBelow')}</span>` : `<a class="btn btn-sm btn-teal" href="#/checkin">${icon('pin',14)}${t('checkInNow')}</a>`) : s.status==='live' ? (r ? attBadge(r, s) : inline ? `<span class="xs" style="color:var(--teal-700);font-weight:600">${t('enterCodeBelow')}</span>` : `<a class="btn btn-sm btn-teal" href="#/checkin">${icon('login',14)}${t('checkInNow')}</a>`)
     : s.status==='scheduled' ? `<span class="xs muted">${t('checkinOpensAt',{t:s.start})}</span>` : attBadge(r, s);
   return `<li class="today-row ${s.status==='live'?'is-live':''}"><div class="today-time ltr">${s.start}<span>${s.end}</span></div><div class="grow" style="min-width:0"><div class="small cell-main">${LE(s.title)} ${s.status==='live'?badge('b-live', t('st.live')):''}</div><div class="xs muted">${LE(c.title)} · ${locationHtml(s)}</div></div><div class="row" style="flex-wrap:nowrap">${act}</div></li>`;
 }
@@ -193,7 +209,7 @@ SCREENS.mycourse = R => {
   const tabsHtml = `<nav class="hub-tabs" aria-label="${esc(t('courseSections'))}"><div class="hub-tabs-in" role="tablist">${HUB_TABS.map(k=>`<a role="tab" class="hub-tab" href="${href('mycourse', pa.id, {tab:k})}" aria-selected="${k===tab}" ${k===tab?'aria-current="page"':''}>${icon(HUB_ICON[k],16)}<span>${t('hub.'+k)}</span>${counts[k]!=null?`<span class="hub-count ${k==='todo'&&counts[k]?'warn':''}">${counts[k]}</span>`:''}</a>`).join('')}</div></nav>`;
   // Today banner (always above the tabs content when the course meets today)
   const banner = today.length ? `<section class="today-banner ${live?'is-live':''}" aria-label="${esc(t('todayTitle'))}"><div class="today-banner-h"><span class="today-dot" aria-hidden="true"></span><b>${t('todayInCourse')}</b><span class="xs">${esc(fmtDay(0,true))}</span></div>
-    <ul class="list today-list">${today.map(s=>todayRow(pa, s, live && !rec(live.id, pa.id))).join('')}</ul>${live && !rec(live.id, pa.id) ? `<div class="today-ci">${checkinCard(pa)}</div>` : ''}</section>` : '';
+    <ul class="list today-list">${today.map(s=>todayRow(pa, s, (live && !rec(live.id, pa.id)) || (geoOpenOf(pa) && !rec(geoOpenOf(pa).id, pa.id)))).join('')}</ul>${(live && !rec(live.id, pa.id)) || (geoOpenOf(pa) && !rec(geoOpenOf(pa).id, pa.id)) || (V.geo && today.some(s=>s.id===V.geo.sid)) ? `<div class="today-ci">${checkinCard(pa)}</div>` : ''}</section>` : '';
   let body = '';
   if (tab==='materials') body = `<div class="row between" style="margin-bottom:10px"><p class="small muted">${t('matAccessNote2',{d:S.settings.materialDays})}</p></div>${ms.length ? materialsByDay(ch.id, ms, 'participant') : card('', `<div class="empty">${icon('book',36)}<h3>${t('noMaterialsYetT')}</h3><p>${t('noMaterialsYetD')}</p></div>`)}`;
   if (tab==='todo') body = card(t('ms2.todo'), todoList(participantTodo(pa)), {right: open ? badge('b-info', t('nOpen',{n:open}), false) : badge('b-ok', t('allDone'), false)});
@@ -211,13 +227,13 @@ const HUB_ICON = {materials:'book', todo:'clipboard', schedule:'calendar', progr
 /* Check in: the fastest path — every session today across your courses, with the code box right there */
 SCREENS.checkin = () => {
   const ens = myEnrollments(), rows = ens.flatMap(pa=>todayOf(pa).map(s=>({pa, s}))).sort((a,b)=>a.s.start.localeCompare(b.s.start));
-  const live = ens.filter(pa=>liveOf(pa));
+  const live = ens.filter(pa=>liveOf(pa) || geoOpenOf(pa));
   const nextUp = ens.flatMap(pa=>activeSessions(pa.cohortId).filter(s=>s.status==='scheduled' && sOff(s)>0).map(s=>({pa, s}))).sort((a,b)=>sessSort(a.s,b.s))[0];
   let body;
   if (live.length) body = `<div class="stack">${live.map(pa=>checkinCard(pa)).join('')}</div>`;
   else if (rows.length) body = card('', `<ul class="list today-list">${rows.map(x=>todayRow(x.pa, x.s)).join('')}</ul><div style="margin-top:12px">${note(t('ciWaiting'),'', 'clock')}</div>`);
   else body = card('', empty(t('noSessionToday'), nextUp ? t('nextSessionIs',{s:L(nextUp.s.title), d:dayLabel(sOff(nextUp.s)), t:nextUp.s.start}) : '', 'calendar'));
-  const others = live.length && rows.length > live.length ? card(t('laterToday'), `<ul class="list today-list">${rows.filter(x=>x.s.status!=='live').map(x=>todayRow(x.pa, x.s)).join('')}</ul>`) : '';
+  const others = live.length && rows.length > live.length ? card(t('laterToday'), `<ul class="list today-list">${rows.filter(x=>x.s.status!=='live' && geoOpenOf(x.pa)?.id!==x.s.id).map(x=>todayRow(x.pa, x.s)).join('')}</ul>`) : '';
   return {title:t('nav.checkin'), html:`<div class="ci-wrap">${pageHead(t('nav.checkin'), t('checkinSub'))}${body}${others?`<div style="margin-top:16px">${others}</div>`:''}
     <details class="explain card card-b" style="margin-top:16px"><summary>${t('howCheckIn')}</summary><ol class="small" style="margin:8px 0 0;padding-inline-start:18px;line-height:1.8"><li>${t('how1')}</li><li>${t('how2')}</li><li>${t('how3b')}</li></ol><p class="xs muted" style="margin-top:6px">${t('how4')}</p></details></div>`,
     after: ()=>{ const i = $('.code-input'); i && !topModal() && i.focus({preventScroll:true}); }};
