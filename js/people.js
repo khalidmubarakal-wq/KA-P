@@ -6,7 +6,7 @@
    resend (simulated) and deactivate without deleting history.
    Access rules are a front-end simulation, not production security.
    ===================================================================== */
-const STAFF_ROLES = ['trainer','coordinator','client','admin'];
+const STAFF_ROLES = ['trainer','ta','coordinator','client','admin'];
 V.people = {q:'', role:'all', status:'all'};
 /** Plain description of where a person has access. */
 function scopeOf(u){
@@ -14,6 +14,7 @@ function scopeOf(u){
   if (u.role==='client') return {txt: client(u.clientId) ? L(client(u.clientId).name) : t('scope.none'), items:[]};
   if (u.role==='coordinator'){ const ps = S.programs.filter(p=>!p.archived && (p.coordinatorIds||[]).includes(u.id)); return {txt: ps.length ? ps.map(p=>L(p.title)).join(' · ') : t('scope.noProgram'), items:ps.map(p=>({label:L(p.title), sub:L(client(p.clientId)?.name), href:href('program',p.id)}))}; }
   if (u.role==='trainer'){ const cs = S.courses.filter(c=>!c.archived && isCourseInstructor(c.id, u.id)); return {txt: cs.length ? cs.map(c=>L(c.title)).join(' · ') : t('scope.noCourse'), items:cs.map(c=>({label:L(c.title) + (leadOf(c.id)===u.id && courseInstructors(c.id).length>1 ? ' · '+t('leadShort',null,true) : ''), sub:`${L(program(c.programId).title)} · ${t('nSessionsAssigned',{n:S.sessions.filter(s=>s.courseId===c.id && s.status!=='cancelled' && sessionInstructors(s).includes(u.id)).length},true)}`, href:href('course',c.id)}))}; }
+  if (u.role==='ta'){ const cs = S.courses.filter(c=>!c.archived && isCourseTA(c.id, u.id)); return {txt: cs.length ? cs.map(c=>L(c.title)).join(' · ') : t('scope.noCourse'), items:cs.map(c=>({label:L(c.title), sub:L(program(c.programId).title), href:href('course',c.id)}))}; }
   return {txt:'', items:[]};
 }
 const USTATUS = {active:'b-ok', invited:'b-sim', deactivated:'b-bad'};
@@ -28,10 +29,10 @@ function peopleRows(){
     <div class="person-scope"><div class="xs muted">${t('accessScope')}</div><div class="small">${esc(scopeOf(u).txt)}</div></div>
     <div class="person-actions row"><button class="btn btn-sm" data-action="personAccess" data-k="${u.id}">${t('viewAccess')}</button>${u.status==='invited'?`<button class="btn btn-sm btn-ghost" data-action="resendStaffInvite" data-k="${u.id}">${t('resend')}</button>`:''}</div></li>`).join('')}</ul>`, {flush:true});
 }
-const ROLE_BADGE = {admin:'b-navy', coordinator:'b-teal', trainer:'b-info', client:'b-warn', participant:''};
+const ROLE_BADGE = {admin:'b-navy', coordinator:'b-teal', trainer:'b-info', ta:'b-sim', client:'b-warn', participant:''};
 SCREENS.people = () => {
-  const actions = `<button class="btn btn-primary" data-action="openInvite" data-k="trainer">${icon('plus',16)}${t('invite.trainer')}</button><button class="btn" data-action="openInvite" data-k="coordinator">${icon('plus',16)}${t('invite.coordinator')}</button><button class="btn" data-action="openInvite" data-k="client">${icon('plus',16)}${t('invite.client')}</button>`;
-  const html = pageHead(t('people.title'), t('people.sub'), actions, [[t('nav.config'),'#/config'],[t('people.title')]])
+  const actions = `<button class="btn btn-primary" data-action="openInvite" data-k="trainer">${icon('plus',16)}${t('invite.trainer')}</button><button class="btn" data-action="openInvite" data-k="ta">${icon('plus',16)}${t('invite.ta')}</button><button class="btn" data-action="openInvite" data-k="coordinator">${icon('plus',16)}${t('invite.coordinator')}</button><button class="btn" data-action="openInvite" data-k="client">${icon('plus',16)}${t('invite.client')}</button>`;
+  const html = pageHead(t('people.title'), t('people.sub'), actions)
     + `<div class="toolbar" role="search"><div class="search">${icon('search',16)}<input class="input" id="peQ" type="search" data-input="peopleSearch" value="${esc(V.people.q)}" placeholder="${esc(t('peopleSearchPh'))}" aria-label="${esc(t('peopleSearchPh'))}"></div>
       ${sel('peRole','peopleFilter', [['all',t('allRoles')]].concat(STAFF_ROLES.map(r=>[r, t('role.'+r)])), V.people.role, t('roleWord'))}
       ${sel('peStatus','peopleFilter', [['all',t('allStatuses2')],['active',t('ust.active')],['invited',t('ust.invited')],['deactivated',t('ust.deactivated')]], V.people.status, t('status'))}</div>
@@ -54,6 +55,8 @@ function openInvite(r, ctx={}){
   let scope = '';
   if (r==='trainer' && ctx.form!=='course') scope = field('icourse', t('assignToCourseOpt'), selF('icourse', [['',t('noCourseYet')]].concat(crs.map(c=>[c.id, `${LE(c.title)} — ${LE(program(c.programId).title)}`])), ctx.course||''), t('assignToCourseHelp'));
   if (r==='trainer' && ctx.form==='course') scope = note(t('inviteAddsToForm'),'', 'info');
+  if (r==='ta' && ctx.form!=='course') scope = field('icourse', t('assignToCourseOpt'), selF('icourse', [['',t('noCourseYet')]].concat(crs.map(c=>[c.id, `${LE(c.title)} — ${LE(program(c.programId).title)}`])), ctx.course||''), t('assignToCourseHelpTa'));
+  if (r==='ta' && ctx.form==='course') scope = note(t('inviteAddsToForm'),'', 'info');
   if (r==='coordinator') scope = `<fieldset class="field"><legend class="lbl">${t('assignPrograms')} *</legend><div class="team-list">${progs.map(p=>`<label class="check"><input type="checkbox" name="iprog" value="${p.id}" ${ctx.program===p.id?'checked':''}><span>${LE(p.title)} <span class="xs muted">· ${LE(client(p.clientId)?.name)}${p.status==='draft'?' · '+t('draft'):''}</span></span></label>`).join('')}</div><span class="help">${t('assignProgramsHelp')}</span><span class="err" id="e-iprog" role="alert"></span></fieldset>`;
   if (r==='client') scope = field('iclient', t('clientOrganization')+' *', selF('iclient', [['',t('chooseClient')]].concat(S.clients.map(c=>[c.id, LE(c.name)])), ctx.client||''), t('clientCoordHelp2'));
   if (r==='admin') scope = `${note(t('adminWarn'),'warn','shield')}<label class="check" style="margin-top:10px"><input type="checkbox" name="iconfirm"><span>${t('adminConfirm')}</span></label><span class="err" id="e-iconfirm" role="alert"></span>`;
@@ -74,11 +77,13 @@ SUB.inviteStaff = form => {
   let where = '';
   if (r==='coordinator'){ progs.forEach(pid=>{ const p = program(pid); p.coordinatorIds = [...new Set((p.coordinatorIds||[]).concat(id))]; addLog('coord_assign', {prog:pid, user:id}); }); where = progs.map(pid=>L(program(pid).title)).join(', '); }
   if (r==='trainer' && fd.get('icourse')){ const c = course(fd.get('icourse')); setCourseTeam(c, courseInstructors(c.id).concat(id), leadOf(c.id)); where = L(c.title); }
+  if (r==='ta' && fd.get('icourse')){ const c = course(fd.get('icourse')); c.taIds = [...new Set((c.taIds||[]).concat(id))]; addLog('trainer_assign', {course:c.id, user:id}); where = L(c.title); }
   if (r==='client') where = L(client(u.clientId).name);
   save(); closeModal(); INVITE_CTX = null;
   // Return to the form that opened the invitation, with the new person ready to select
   const host = topModal();
-  if (C.form==='course' && host && host.querySelector('#teamList')){ const list = host.querySelector('#teamList'); list.querySelector('p')?.remove(); list.insertAdjacentHTML('beforeend', teamRow(u, true, false)); const x = list.querySelector(`input[value="${id}"]`); x && x.focus(); }
+  if (C.form==='course' && r==='ta' && host && host.querySelector('#taList')){ const list = host.querySelector('#taList'); list.querySelector('p')?.remove(); list.insertAdjacentHTML('beforeend', taRow(u, true)); const x = list.querySelector(`input[value="${id}"]`); x && x.focus(); }
+  else if (C.form==='course' && host && host.querySelector('#teamList')){ const list = host.querySelector('#teamList'); list.querySelector('p')?.remove(); list.insertAdjacentHTML('beforeend', teamRow(u, true, false)); const x = list.querySelector(`input[value="${id}"]`); x && x.focus(); }
   else if (C.form==='coordAssign' && host && host.querySelector('#coordList')){ host.querySelector('#coordList').insertAdjacentHTML('beforeend', coordRow(u, true)); }
   else render();
   toast(t('invitePreparedStaff',{n, r:t('role.'+r,null,true)}) + (where ? ' · '+t('accessTo',{w:where}) : ''));
@@ -88,6 +93,7 @@ ACT.resendStaffInvite = el => { const u = user(el.dataset.k); u.invitedAt = Date
 /* ---------- Person access: view scope, edit assignments, deactivate / reactivate ---------- */
 ACT.personAccess = el => { const u = user(el.dataset.k), sc = scopeOf(u); let edit = '';
   if (u.role==='trainer') edit = `<fieldset class="field"><legend class="lbl">${t('assignedCourses')}</legend><div class="team-list">${S.programs.filter(p=>!p.archived).map(p=>{ const cs = coursesOf(p.id); return cs.length ? `<div class="xs muted" style="margin-top:6px">${LE(p.title)}</div>${cs.map(c=>`<label class="check"><input type="checkbox" name="scope" value="${c.id}" ${isCourseInstructor(c.id,u.id)?'checked':''}><span>${LE(c.title)}</span></label>`).join('')}` : ''; }).join('')}</div><span class="help">${t('assignedCoursesHelp')}</span></fieldset>`;
+  if (u.role==='ta') edit = `<fieldset class="field"><legend class="lbl">${t('assignedCourses')}</legend><div class="team-list">${S.programs.filter(p=>!p.archived).map(p=>{ const cs = coursesOf(p.id); return cs.length ? `<div class="xs muted" style="margin-top:6px">${LE(p.title)}</div>${cs.map(c=>`<label class="check"><input type="checkbox" name="scope" value="${c.id}" ${isCourseTA(c.id,u.id)?'checked':''}><span>${LE(c.title)}</span></label>`).join('')}` : ''; }).join('')}</div></fieldset>`;
   if (u.role==='coordinator') edit = `<fieldset class="field"><legend class="lbl">${t('assignPrograms')}</legend><div class="team-list">${S.programs.filter(p=>!p.archived).map(p=>`<label class="check"><input type="checkbox" name="scope" value="${p.id}" ${(p.coordinatorIds||[]).includes(u.id)?'checked':''}><span>${LE(p.title)} <span class="xs muted">· ${LE(client(p.clientId)?.name)}</span></span></label>`).join('')}</div></fieldset>`;
   if (u.role==='client') edit = field('scope', t('clientOrganization'), selF('scope', S.clients.map(c=>[c.id, LE(c.name)]), u.clientId), t('clientCoordHelp2'));
   if (u.role==='admin') edit = note(t('scope.adminLong'),'', 'shield');
@@ -99,6 +105,7 @@ ACT.personAccess = el => { const u = user(el.dataset.k), sc = scopeOf(u); let ed
 SUB.saveScope = form => { const u = user(form.dataset.k), fd = new FormData(form); let changed = 0;
   if (u.role==='trainer'){ const want = fd.getAll('scope'); S.courses.filter(c=>!c.archived).forEach(c=>{ const has = isCourseInstructor(c.id, u.id), w = want.includes(c.id); if (has!==w){ changed++; setCourseTeam(c, w ? courseInstructors(c.id).concat(u.id) : courseInstructors(c.id).filter(x=>x!==u.id), leadOf(c.id)); } }); }
   if (u.role==='coordinator'){ const want = fd.getAll('scope'); S.programs.forEach(p=>{ const has = (p.coordinatorIds||[]).includes(u.id), w = want.includes(p.id); if (has!==w){ changed++; p.coordinatorIds = w ? (p.coordinatorIds||[]).concat(u.id) : p.coordinatorIds.filter(x=>x!==u.id); addLog(w?'coord_assign':'coord_unassign', {prog:p.id, user:u.id}); } }); }
+  if (u.role==='ta'){ const want = fd.getAll('scope'); S.courses.filter(c=>!c.archived).forEach(c=>{ const has = isCourseTA(c.id, u.id), w = want.includes(c.id); if (has!==w){ changed++; c.taIds = w ? (c.taIds||[]).concat(u.id) : c.taIds.filter(x=>x!==u.id); addLog(w?'trainer_assign':'trainer_unassign', {course:c.id, user:u.id}); } }); }
   if (u.role==='client' && fd.get('scope')!==u.clientId){ u.clientId = fd.get('scope'); changed++; addLog('access_update', {user:u.id, client:u.clientId}); }
   save(); closeModal(); render(); toast(changed ? t('accessUpdated',{n:L(u.name)}) : t('noChanges'), changed?'ok':'info'); };
 ACT.setAccess = el => { const u = user(el.dataset.k), on = el.dataset.on==='1';

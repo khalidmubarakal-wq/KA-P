@@ -573,3 +573,14 @@ legend{font-weight:600;font-size:13px;color:var(--g-700);margin-bottom:6px;paddi
 .ai-preview{max-height:320px;overflow:auto;border:1px solid var(--g-200);border-radius:8px;padding:0 12px}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--g-300);border-top-color:var(--teal-600);border-radius:50%;vertical-align:-2px;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* Location check-in */
+.geo-box{border:1px solid var(--teal-100);background:var(--teal-50);border-radius:12px;padding:14px}
+.geo-box .btn-checkin{width:100%}
+.or-sep{display:flex;align-items:center;gap:10px;margin:14px 0 10px;color:var(--g-500);font-size:12px}
+.or-sep::before,.or-sep::after{content:"";flex:1;border-top:1px solid var(--g-200)}
+.geo-fs{border:1px solid var(--g-200);border-radius:10px;padding:12px 14px;margin-bottom:14px}
+.task-grid .ti-btn{display:block;width:100%;text-align:start;font:inherit;color:inherit;cursor:pointer}
+.task-grid .ti-btn:hover{border-color:var(--teal-500);background:#fff}
+.task-grid .ti-btn .ti-go{color:var(--teal-700);font-weight:600}
+.result h2[tabindex="-1"]:focus{outline:none}

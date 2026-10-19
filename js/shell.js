@@ -5,14 +5,18 @@
    ===================================================================== */
 const ACT = {}, CHG = {}, INP = {}, SUB = {}, SCREENS = {};
 const NAV = {
-  admin:       [['home','dashboard'],['programs','layers'],['clients','users']],
+  admin:       [['home','dashboard'],['programs','layers'],['people','users'],['reports','chart']],
   coordinator: [['home','dashboard'],['sessions','checkCircle']],
   trainer:     [['home','dashboard'],['mycourses','book'],['sessions','checkCircle']],
+  ta:          [['home','book'],['sessions','checkCircle']],
   client:      [['home','dashboard'],['courses','layers']],
   participant: [['home','home'],['mycourse','book'],['checkin','checkCircle']],
 };
-const EXTRA_ROUTES = {admin:['program','setup','course','attendance','config','people','requests','schedule','audit','verify'], coordinator:['course','attendance','verify'], trainer:['course','attendance','verify'], client:['course','verify'], participant:['activate','verify']};
-const DEFAULT_ROUTE = {admin:'home', coordinator:'home', trainer:'home', client:'home', participant:'home'};
+/** Role-specific names for shared routes (one route, plain label per role). */
+const NAV_LABEL = {participant:{home:'nav.myLearning'}, client:{home:'nav.programOverview'}, coordinator:{home:'nav.operations'}, ta:{home:'nav.assignedCourses'}};
+const navLabel = (r, k) => t((NAV_LABEL[r] && NAV_LABEL[r][k]) || 'nav.'+k);
+const EXTRA_ROUTES = {admin:['program','setup','course','attendance','config','clients','requests','schedule','audit','verify'], coordinator:['course','attendance','verify'], trainer:['course','attendance','verify'], ta:['course','attendance','verify'], client:['course','verify'], participant:['activate','verify']};
+const DEFAULT_ROUTE = {admin:'home', coordinator:'home', trainer:'home', ta:'home', client:'home', participant:'home'};
 const allowedRoutes = r => NAV[r].map(x=>x[0]).concat(EXTRA_ROUTES[r]);
 
 /* In-memory router; mirrors the address-bar hash only where the browser allows it
@@ -61,7 +65,7 @@ const OWN = {admin:'own-admin', trainer:'own-trainer', participant:'own-particip
 const ownerTag = k => `<span class="owner ${OWN[k]}">${t('own.'+k)}</span>`;
 const STC = {draft:'', structure:'b-warn', awaiting:'b-info', ready:'b-teal', in_progress:'b-live', completed:'b-navy', archived:''};
 const stBadge = st => badge(STC[st]||'', t('cst.'+st));
-const CTS = {not_started:'', in_progress:'b-info', ready:'b-ok'};
+const CTS = {not_started:'', draft:'b-info', in_progress:'b-info', ready:'b-teal', published:'b-ok'};
 const ctBadge = st => badge(CTS[st], t('ct.'+st));
 const sessBadge = s => s.status==='live' ? badge('b-live', t('st.live')) : s.status==='ended' ? badge('', t('st.ended')) : s.status==='cancelled' ? badge('b-bad', t('st.cancelled'), false) : badge('b-info', t('st.scheduled'));
 const modeBadge = m => badge(m==='virtual'?'b-sim':'b-teal', t('mode.'+m), false);
@@ -107,14 +111,14 @@ const liveCourse = cid => { const c = course(cid); return c && !c.archived && pr
 
 /* ---------- Shell ---------- */
 function roleOptions(){
-  return ['admin','coordinator','trainer','client','participant'].map(r=>`<optgroup label="${esc(t('role.'+r))}">${S.users.filter(u=>u.demo && u.role===r).map(u=>{
+  return ['admin','coordinator','trainer','ta','client','participant'].map(r=>`<optgroup label="${esc(t('role.'+r))}">${S.users.filter(u=>u.demo && u.role===r).map(u=>{
     const extra = r==='client' ? ' — '+L(client(u.clientId).name) : r==='participant' ? ' — '+L(courseOfPart(u.participantId).title) + (inviteStatus(part(u.participantId))!=='completed' ? ' ('+t('notActivated',null,true)+')' : '') : '';
     return `<option value="${u.id}"${u.id===UIP.userId?' selected':''}>${esc(t('role.'+r))}: ${esc(L(u.name)+extra)}</option>`; }).join('')}</optgroup>`).join('');
 }
 function shell(screen, route){
   const r = role(), u = me(), nts = notifications(), seen = new Set(UIP.seen[u.id]||[]), unread = nts.filter(n=>!seen.has(n.key)).length;
-  const active = k => route===k || (k==='programs' && ['program','setup','course'].includes(route) && role()==='admin') || (k==='mycourses' && route==='course') || (k==='courses' && route==='course') || (k==='sessions' && route==='attendance') || (k==='mycourse' && route==='activate');
-  const navItems = NAV[r].map(([k,ic])=>`<a href="#/${k}" ${active(k)?'aria-current="page"':''}>${icon(ic,18)}<span>${t('nav.'+k)}</span></a>`).join('');
+  const active = k => route===k || (k==='programs' && ['program','setup','course','clients'].includes(route) && role()==='admin') || (k==='mycourses' && route==='course') || (k==='courses' && route==='course') || (k==='sessions' && route==='attendance') || (k==='mycourse' && route==='activate');
+  const navItems = NAV[r].map(([k,ic])=>`<a href="#/${k}" ${active(k)?'aria-current="page"':''}>${icon(ic,18)}<span>${navLabel(r, k)}</span></a>`).join('');
   const bottom = r==='participant' ? `<nav class="bottom-nav no-print" aria-label="${esc(t('mobileNav'))}">${NAV[r].slice(0,5).map(([k,ic])=>`<a href="#/${k}" ${active(k)?'aria-current="page"':''}>${icon(ic,20)}<span>${t('navShort.'+k)}</span></a>`).join('')}</nav>` : '';
   return `<div class="app ${V.navOpen?'nav-open':''} ${r==='participant'?'has-bottom':''}">
   <aside class="sidebar no-print" id="sidebar" aria-label="${esc(t('mainNav'))}">

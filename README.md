@@ -29,11 +29,33 @@ js/admin.js       Academy Admin: home, programs, clients, setup, schedule
 js/people.js      People & access (Academy Admin)
 js/course.js      course page (role-based tabs)
 js/assess-import.js  instructor import of assessments from the Excel template (template, validation, review)
-js/sessions.js    sessions & attendance
-js/roles.js       role homes (Program Coordinator, Instructor, Client Coordinator, Participant)
+js/surveys.js     instructor-built course surveys (rating, multiple choice, free text), responses, results
+js/sessions.js    sessions & attendance (code / QR check-in, manual exceptions)
+js/geo.js         location-based check-in for in-person sessions (one-shot, nothing stored but the result)
+js/roles.js       role homes (Program Coordinator, Instructor, Teaching Assistant, Client Coordinator, Participant)
 js/main.js        shared actions, event wiring, timers, startup
 ```
 The scripts are plain (non-module) scripts that share global variables, so their order in `index.html` matters. Add a new file before `js/main.js`.
 
 ## Deployment
 `.github/workflows/pages.yml` publishes the site to GitHub Pages on every push to `main`. Turn it on under **Settings → Pages → Source: GitHub Actions**.
+
+## Roles (demo role switcher)
+| Role | Sees | Can change |
+| --- | --- | --- |
+| Academy Admin / Program Manager | Programs, People, Reports | Program structure: clients, courses, sessions and venues, team assignment, enrolment |
+| Instructor | My courses (assigned only) | Materials, assessments (incl. Excel import), surveys, activities; runs own sessions |
+| Teaching Assistant | Assigned courses | Attendance exceptions with a reason; read-only rosters |
+| Program Coordinator | Operations for assigned programs | Delivery support: invites, attendance exceptions |
+| Client Coordinator | Program overview (own organisation) | Read-only; sees shared published materials and summary progress |
+| Participant | My Learning | Own check-in, assessments, surveys, submissions |
+
+## Location check-in (demo)
+In-person sessions can be pinned to a venue (coordinates or a map link) with a check-in radius (default 100 m),
+a maximum location accuracy (default ±50 m) and a window that opens before the start (default 30 min) and closes
+when the session ends. A participant's device location is requested once, only when they tap
+**Check in with my location**, and only over https. It is compared with the venue using the haversine distance;
+readings that are too imprecise, or too close to the boundary to decide, ask the participant to retry. Only the
+result, time, method and a rounded distance/accuracy are stored — never coordinates. Demo controls simulate
+readings on devices without GPS and are recorded as simulated. Authorised staff can record a manual exception
+with a reason, which is written to the activity log. This is a demo, not a legally or operationally approved system.

@@ -72,7 +72,13 @@ function migrate(D){
   D.sessions.forEach(s=>{ if (!Array.isArray(s.instructorIds)){ const c = D.courses.find(x=>x.id===s.courseId); s.instructorIds = c ? c.instructorIds.slice() : []; } if (s.leadId===undefined) s.leadId = s.instructorIds[0] || null; });
   D.programs.forEach(p=>{ if (!Array.isArray(p.coordinatorIds)){ const o = D.users.find(u=>u.id===p.ownerId); p.coordinatorIds = o && o.role==='coordinator' ? [o.id] : []; } });
   D.users.forEach(u=>{ if (!u.status) u.status = 'active'; });
-  D.drafts = D.drafts || {}; D.requests = D.requests || [];
+  D.courses.forEach(c=>{ if (!Array.isArray(c.taIds)) c.taIds = []; });
+  if (!D.users.some(u=>u.id==='u_ta1')){ D.users.push({id:'u_ta1', role:'ta', demo:true, name:{en:'Reem Al-Ghamdi', ar:'ريم الغامدي'}, title:{en:'Teaching Assistant', ar:'مساعدة تدريس'}, email:'r.alghamdi@academy.example', status:'active'}); ['CR1','CR3'].forEach(id=>{ const c = D.courses.find(x=>x.id===id); if (c && !c.taIds.includes('u_ta1')) c.taIds.push('u_ta1'); }); }
+  D.drafts = D.drafts || {}; D.requests = D.requests || []; D.surveys = D.surveys || []; D.surveyResponses = D.surveyResponses || [];
+  // Location check-in (sample venue pins; defaults 100 m radius, ±50 m accuracy, opens 30 min early)
+  const pins = {r1:[22.30955,39.10465,'Academy Building A — sample pin','مبنى الأكاديمية A — موقع تجريبي'], r2:[22.31190,39.10230,'Academy Building B — sample pin','مبنى الأكاديمية B — موقع تجريبي'], r3:[22.30720,39.10790,'Academy Building C — sample pin','مبنى الأكاديمية C — موقع تجريبي']};
+  D.rooms.forEach(r=>{ if (!r.geo && pins[r.id]) r.geo = {lat:pins[r.id][0], lng:pins[r.id][1], label:{en:pins[r.id][2], ar:pins[r.id][3]}}; });
+  if (D.settings.geofenceRadius===150) D.settings.geofenceRadius = 100; if (D.settings.geoAccuracy==null) D.settings.geoAccuracy = 50; if (D.settings.geoBefore==null) D.settings.geoBefore = 30;
   if (D.version !== DATA_VERSION){ D.log.push({id:'Lmig'+Date.now().toString(36), ts:Date.now(), actor:'system', type:'data_migrate', p:{v:DATA_VERSION}}); D.version = DATA_VERSION; }
 }
 function save(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); localStorage.setItem(UI_KEY, JSON.stringify(UIP)); STORAGE_OK = true; } catch(e){ STORAGE_OK = false; } }
@@ -119,6 +125,9 @@ const dayIndex = (s) => { const ds = daysOfCohort(s.cohortId); return ds.findInd
 const courseInstructors = cid => { const c = course(cid); if (!c) return []; return (Array.isArray(c.instructorIds) ? c.instructorIds : (c.trainerId ? [c.trainerId] : [])).filter(id=>user(id)); };
 const leadOf = cid => { const c = course(cid), ids = courseInstructors(cid); return c && ids.includes(c.leadId) ? c.leadId : (ids[0] || null); };
 const isCourseInstructor = (cid, uid) => courseInstructors(cid).includes(uid);
+/** Teaching Assistants support assigned courses (roster, attendance, participant help) — no structure or content changes. */
+const courseTAs = cid => ((course(cid)||{}).taIds || []).filter(id=>user(id));
+const isCourseTA = (cid, uid) => courseTAs(cid).includes(uid);
 const sessionInstructors = s => !s ? [] : (Array.isArray(s.instructorIds) ? s.instructorIds : courseInstructors(s.courseId)).filter(id=>user(id));
 const sessionLead = s => { const ids = sessionInstructors(s); return ids.includes(s.leadId) ? s.leadId : (ids[0] || null); };
 const trainerOf = cid => user(leadOf(cid));
@@ -155,9 +164,9 @@ function can(action, ctx){
     case 'certApprove': return r==='admin' || r==='coordinator';
     case 'certTemplate': return r==='admin';
     case 'runSession': return r==='trainer' && !!ctx && sessionInstructors(sess(ctx)).includes(u.id); // only instructors assigned to THIS session
-    case 'attendanceException': return r==='admin' || (r==='coordinator' && !!ctx && canSeeCourse(sess(ctx).courseId)) || (r==='trainer' && !!ctx && sessionInstructors(sess(ctx)).includes(u.id));
+    case 'attendanceException': return r==='admin' || (r==='coordinator' && !!ctx && canSeeCourse(sess(ctx).courseId)) || (r==='trainer' && !!ctx && sessionInstructors(sess(ctx)).includes(u.id)) || (r==='ta' && !!ctx && isCourseTA(sess(ctx).courseId, u.id));
     case 'regenCode': return r==='admin';
-    case 'requestChange': return r==='coordinator' || (r==='trainer' && (!ctx || isCourseInstructor(ctx, u.id)));
+    case 'requestChange': return r==='coordinator' || (r==='trainer' && (!ctx || isCourseInstructor(ctx, u.id))) || (r==='ta' && (!ctx || isCourseTA(ctx, u.id)));
     case 'config': return r==='admin';
     case 'audit': return r==='admin' || r==='coordinator';
     case 'reports': return r!=='participant';
@@ -168,6 +177,7 @@ function visibleCourses(){
   const u = me();
   if (u.role==='trainer') return S.courses.filter(c=>isCourseInstructor(c.id, u.id) && !c.archived && program(c.programId).status!=='draft' && !program(c.programId).archived);
   if (u.role==='coordinator'){ const ids = new Set(visiblePrograms().map(p=>p.id)); return S.courses.filter(c=>ids.has(c.programId) && !c.archived); }
+  if (u.role==='ta') return S.courses.filter(c=>isCourseTA(c.id, u.id) && !c.archived && program(c.programId).status!=='draft' && !program(c.programId).archived);
   if (u.role==='client') return S.courses.filter(c=>program(c.programId).clientId===u.clientId && !c.archived && program(c.programId).status!=='draft' && !program(c.programId).archived);
   if (u.role==='participant') return myEnrollments().map(x=>course(cohort(x.cohortId).courseId));
   return S.courses.slice();
@@ -206,15 +216,16 @@ function adminSetup(cid){
   items.push({k:'conflicts', ok: conf===0, soft:true, n:conf});
   return {items, complete: items.filter(i=>!i.soft).every(i=>i.ok)};
 }
-/** Trainer-owned content status for a course: not_started | in_progress | ready. */
+/** Instructor preparation checklist, in order. The survey is optional; the rest are required for "content ready". */
+const CONTENT_KEYS = ['materials','pre','post','survey'], CONTENT_REQ = ['materials','pre','post'];
+const contentDone = st => st==='ready' || st==='published';
+/** Status per item: not_started | draft | ready (scheduled to release) | published. */
 function contentStatus(cid){
-  const a = type => { const x = curAssessment(cid, type); if (!x) return 'not_started'; if (x.status==='ready') return 'ready'; return (x.questions.length || (type==='post' && x.sameAsPre)) ? 'in_progress' : 'not_started'; };
-  const acts = S.activities.filter(x=>x.courseId===cid && x.status!=='archived');
+  const a = type => { const x = curAssessment(cid, type); if (!x) return 'not_started'; if (x.status==='ready') return 'published'; return (x.questions.length || (type==='post' && x.sameAsPre)) ? 'draft' : 'not_started'; };
   const mats = S.materials.filter(x=>x.courseId===cid && x.state!=='archived');
-  const items = {pre:a('pre'), post:a('post'),
-    activities: !acts.length ? 'not_started' : acts.some(x=>x.status==='published') ? 'ready' : 'in_progress',
-    materials: !mats.length ? 'not_started' : mats.some(x=>x.state==='available' || x.state==='scheduled') ? 'ready' : 'in_progress'};
-  return {items, complete: Object.values(items).every(v=>v==='ready'), done: Object.values(items).filter(v=>v==='ready').length};
+  const items = {materials: !mats.length ? 'not_started' : mats.some(x=>matState(x)==='available') ? 'published' : mats.some(x=>x.state==='scheduled') ? 'ready' : 'draft',
+    pre:a('pre'), post:a('post'), survey: surveyStatus(cid)};
+  return {items, complete: CONTENT_REQ.every(k=>contentDone(items[k])), done: CONTENT_REQ.filter(k=>contentDone(items[k])).length, of: CONTENT_REQ.length};
 }
 function courseStatus(cid){
   const c = course(cid); if (c.archived) return 'archived';
@@ -240,7 +251,7 @@ const cohortStatus = ch => { if (ch.archived) return 'archived'; const r = cohor
 function nextAction(cid){
   const st = courseStatus(cid);
   if (st==='structure' || st==='draft'){ const miss = adminSetup(cid).items.find(i=>!i.ok && !i.soft); return {owner:'admin', key: miss ? 'na.'+miss.k : 'na.finishSetup'}; }
-  if (st==='awaiting'){ const ci = contentStatus(cid).items; const k = Object.keys(ci).find(x=>ci[x]!=='ready'); return {owner:'trainer', key:'na.'+k}; }
+  if (st==='awaiting'){ const ci = contentStatus(cid).items; const k = CONTENT_REQ.find(x=>!contentDone(ci[x])); return {owner:'trainer', key:'na.'+k}; }
   if (st==='ready') return {owner:'coord', key:'na.deliver'};
   if (st==='in_progress') return {owner:'trainer', key:'na.runSessions'};
   if (st==='completed') return {owner:'coord', key:'na.certificates'};
@@ -363,7 +374,7 @@ function addLog(type, p={}, actor){ S.log.push({id:uid('L'), ts:Date.now(), acto
 const LOG_GROUP = {checkin:'attendance', checkin_rejected:'attendance', manual:'attendance', session_start:'attendance', session_end:'attendance', code_regen:'attendance',
   program_create:'structure', program_update:'structure', program_archive:'structure', program_activate:'structure', course_save:'structure', course_archive:'structure', cohort_create:'structure', cohort_archive:'structure', day_add:'structure', day_update:'structure', day_remove:'structure', session_save:'structure', session_cancel:'structure', session_reorder:'structure', trainer_assign:'structure', notify_trainer:'structure',
   participant_add:'participants', participant_update:'participants', import:'participants',
-  assessment_save:'content', assessment_import:'content', assessment_ready:'content', assessment_version:'content', activity_save:'content', material_save:'content', material_release:'content', material_archive:'content', submission_review:'content',
+  assessment_save:'content', assessment_import:'content', survey_save:'content', survey_publish:'content', survey_response:'participants_act', assessment_ready:'content', assessment_version:'content', activity_save:'content', material_save:'content', material_release:'content', material_archive:'content', submission_review:'content',
   submission:'participants_act', eval:'participants_act', assessment:'participants_act',
   cert_approve:'certificates', cert_return:'certificates', template_update:'certificates',
   request_create:'requests', request_resolve:'requests', client_create:'structure', client_update:'structure', invite_send:'participants', invite_resend:'participants', account_activate:'participants_act', settings:'admin', cls_update:'admin', trainer_unassign:'structure', session_staff:'structure', coord_assign:'access', coord_unassign:'access', access_update:'access', access_deactivate:'access', access_reactivate:'access', data_migrate:'admin', room_add:'admin', user_invite:'access', export:'admin'};
