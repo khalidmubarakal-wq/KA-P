@@ -26,7 +26,8 @@ js/qr.js          QR code generator
 js/xlsx.js        minimal .xlsx reader and writer (imports, template download)
 js/shell.js       role-aware navigation, layout, router, notifications, demo guide
 js/admin.js       Academy Admin: home, programs, clients, setup, schedule
-js/people.js      People & access (Academy Admin)
+js/people.js      People directory & access (Academy Admin): search/filter, roles, assignments, duplicate-safe invites
+js/profile.js     user profiles: one account per person, role-specific sections, view/edit, multi-role acting
 js/course.js      course page (role-based tabs)
 js/assess-import.js  instructor import of assessments from the Excel template (template, validation, review)
 js/surveys.js     instructor-built course surveys (rating, multiple choice, free text), responses, results
@@ -59,3 +60,18 @@ readings that are too imprecise, or too close to the boundary to decide, ask the
 result, time, method and a rounded distance/accuracy are stored — never coordinates. Demo controls simulate
 readings on devices without GPS and are recorded as simulated. Authorised staff can record a manual exception
 with a reason, which is written to the activity log. This is a demo, not a legally or operationally approved system.
+
+## Profiles and accounts
+Every person has one account (work email is unique). Staff accounts can hold several roles (for example Instructor and
+Teaching Assistant); the person chooses which role they are **acting as**, and only that role's permissions apply.
+Participants have one account linked to all their course enrollments by work email. Client organisations are separate
+records, not part of anyone's profile. Profiles never contain passwords.
+
+| Role | Can edit on own profile |
+| --- | --- |
+| Academy Admin, Program Coordinator, Teaching Assistant, Client Coordinator | photo, name, job title, work phone, preferred language |
+| Instructor | the above + biography, areas of expertise, qualifications, teaching languages |
+| Participant | photo, work phone, preferred language |
+
+Roles, account status and assignments are changed only by the Academy Admin (People → Access & assignments), and every
+save handler re-checks these rules.

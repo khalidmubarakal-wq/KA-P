@@ -46,7 +46,7 @@ const toMin = hm => { const [h,m] = String(hm).split(':').map(Number); return h*
 
 /* ---------- State & persistence ---------- */
 let S = null;
-let UIP = {userId:'u_admin', lang:'ar', seen:{}};
+let UIP = {userId:'u_admin', lang:'ar', seen:{}, acting:{}};
 let STORAGE_OK = true;
 const V = {
   pl:{q:'', status:'all', client:'all', cat:'all'}, pw:{tab:'overview', course:'all', cohort:null, q:''}, cw:{tab:'overview', cohort:null, q:''},
@@ -73,6 +73,19 @@ function migrate(D){
   D.programs.forEach(p=>{ if (!Array.isArray(p.coordinatorIds)){ const o = D.users.find(u=>u.id===p.ownerId); p.coordinatorIds = o && o.role==='coordinator' ? [o.id] : []; } });
   D.users.forEach(u=>{ if (!u.status) u.status = 'active'; });
   D.courses.forEach(c=>{ if (!Array.isArray(c.taIds)) c.taIds = []; });
+  // Profiles: one account per person, roles[] (multi-role staff), professional fields (fictional demo data)
+  D.users.forEach(u=>{ if (!Array.isArray(u.roles) || !u.roles.length) u.roles = [u.role]; if (!u.lang) u.lang = 'ar'; });
+  const PFD = {
+    t1:{lang:'ar', phone:'+966 50 000 1101', bio:{en:'Applied statistician who helps operations teams turn messy data into clear decisions. Fifteen years of industry and teaching experience (fictional demo profile).', ar:'خبيرة إحصاء تطبيقي تساعد فرق العمليات على تحويل البيانات إلى قرارات واضحة. خمسة عشر عامًا من الخبرة الصناعية والتدريس (ملف تجريبي وهمي).'}, expertise:['Decision analytics','Statistics','Data literacy'], qualifications:'PhD Applied Statistics (demo)', languages:['ar','en']},
+    t2:{lang:'ar', phone:'+966 50 000 1102', bio:{en:'Supply chain engineer focused on forecasting and network optimisation (fictional demo profile).', ar:'مهندس سلاسل إمداد يركز على التنبؤ وتحسين الشبكات (ملف تجريبي وهمي).'}, expertise:['Supply chain','Forecasting','Optimisation'], qualifications:'MSc Industrial Engineering (demo)', languages:['ar','en']},
+    t3:{lang:'en', bio:{en:'Information designer who teaches dashboard design and data storytelling (fictional demo profile).', ar:'مصممة معلومات تدرّس تصميم لوحات المعلومات وسرد البيانات (ملف تجريبي وهمي).'}, expertise:['Dashboards','Data storytelling'], qualifications:'', languages:['en','fr']},
+    t4:{lang:'ar', bio:null, expertise:[], qualifications:'', languages:['ar']},
+    u_admin:{phone:'+966 12 000 0100'}, u_coord:{phone:'+966 50 000 2201'}, cr1:{phone:'+966 13 000 3301'}, cr2:{lang:'en'}, u_ta1:{phone:'+966 50 000 4401'},
+  };
+  if (!D.profilesSeeded){ Object.entries(PFD).forEach(([id, f])=>{ const u = D.users.find(x=>x.id===id); if (u) Object.keys(f).forEach(k=>{ if (u[k]==null || (k==='lang')) u[k] = f[k]; }); });
+    // Demo multi-role account: Eng. Omar Bakri is an Instructor on one course and a Teaching Assistant on another (one account)
+    const om = D.users.find(u=>u.id==='t2'), c1 = D.courses.find(c=>c.id==='CR1'); if (om && c1){ om.roles = [...new Set(om.roles.concat('ta'))]; if (!c1.taIds.includes('t2')) c1.taIds.push('t2'); }
+    D.profilesSeeded = true; }
   if (!D.users.some(u=>u.id==='u_ta1')){ D.users.push({id:'u_ta1', role:'ta', demo:true, name:{en:'Reem Al-Ghamdi', ar:'ريم الغامدي'}, title:{en:'Teaching Assistant', ar:'مساعدة تدريس'}, email:'r.alghamdi@academy.example', status:'active'}); ['CR1','CR3'].forEach(id=>{ const c = D.courses.find(x=>x.id===id); if (c && !c.taIds.includes('u_ta1')) c.taIds.push('u_ta1'); }); }
   D.drafts = D.drafts || {}; D.requests = D.requests || []; D.surveys = D.surveys || []; D.surveyResponses = D.surveyResponses || [];
   // Location check-in (sample venue pins; defaults 100 m radius, ±50 m accuracy, opens 30 min early)
@@ -97,7 +110,12 @@ const byId = (arr, id) => arr.find(x=>x.id===id);
 const program = id => byId(S.programs, id), course = id => byId(S.courses, id), cohort = id => byId(S.cohorts, id), dayRec = id => byId(S.days, id);
 const sess = id => byId(S.sessions, id), part = id => byId(S.participants, id), client = id => byId(S.clients, id), room = id => byId(S.rooms, id), user = id => byId(S.users, id);
 const me = () => user(UIP.userId) || user('u_admin');
-const role = () => me().role;
+/** One account per person. A staff account may hold several roles (u.roles); the acting role decides which permissions apply. */
+const STAFF_ROLE_SET = ['admin','coordinator','trainer','ta'];
+const rolesOf = u => !u ? [] : (Array.isArray(u.roles) && u.roles.length ? u.roles : [u.role]);
+const hasRole = (u, r) => rolesOf(u).includes(r);
+const actingRole = u => { const a = UIP.acting && UIP.acting[u.id]; return a && hasRole(u, a) ? a : u.role; };
+const role = () => actingRole(me());
 const nameOf = id => { const u = user(id); if (u) return L(u.name); const p = part(id); return p ? L(p.name) : t('system'); };
 const byName = (a,b) => L(a.name).localeCompare(L(b.name), LANG);
 const coursesOf = pid => S.courses.filter(c=>c.programId===pid && !c.archived);
@@ -155,7 +173,7 @@ const clsOpts = (type, cur) => clsList(type).concat((S.cls[type]||[]).filter(x=>
 
 /* ---------- Permissions (front-end simulation only — real RBAC needs a secure backend) ---------- */
 function can(action, ctx){
-  const u = me(), r = u.role;
+  const u = me(), r = role();
   switch(action){
     case 'structure': return r==='admin';                                   // programs, courses, cohorts, days, sessions, rooms, trainer assignment
     case 'content': return r==='trainer' && !!ctx && isCourseInstructor(ctx, u.id); // materials, assessments, activities of an assigned course
@@ -175,22 +193,24 @@ function can(action, ctx){
 }
 function visibleCourses(){
   const u = me();
-  if (u.role==='trainer') return S.courses.filter(c=>isCourseInstructor(c.id, u.id) && !c.archived && program(c.programId).status!=='draft' && !program(c.programId).archived);
-  if (u.role==='coordinator'){ const ids = new Set(visiblePrograms().map(p=>p.id)); return S.courses.filter(c=>ids.has(c.programId) && !c.archived); }
-  if (u.role==='ta') return S.courses.filter(c=>isCourseTA(c.id, u.id) && !c.archived && program(c.programId).status!=='draft' && !program(c.programId).archived);
-  if (u.role==='client') return S.courses.filter(c=>program(c.programId).clientId===u.clientId && !c.archived && program(c.programId).status!=='draft' && !program(c.programId).archived);
-  if (u.role==='participant') return myEnrollments().map(x=>course(cohort(x.cohortId).courseId));
+  const r = role();
+  if (r==='trainer') return S.courses.filter(c=>isCourseInstructor(c.id, u.id) && !c.archived && program(c.programId).status!=='draft' && !program(c.programId).archived);
+  if (r==='coordinator'){ const ids = new Set(visiblePrograms().map(p=>p.id)); return S.courses.filter(c=>ids.has(c.programId) && !c.archived); }
+  if (r==='ta') return S.courses.filter(c=>isCourseTA(c.id, u.id) && !c.archived && program(c.programId).status!=='draft' && !program(c.programId).archived);
+  if (r==='client') return S.courses.filter(c=>program(c.programId).clientId===u.clientId && !c.archived && program(c.programId).status!=='draft' && !program(c.programId).archived);
+  if (r==='participant') return myEnrollments().map(x=>course(cohort(x.cohortId).courseId));
   return S.courses.slice();
 }
 function visiblePrograms(){
   const u = me();
-  if (u.role==='admin') return S.programs.slice();
-  if (u.role==='coordinator') return S.programs.filter(p=>p.status!=='draft' && !p.archived && (p.coordinatorIds||[]).includes(u.id)); // assigned programs only
-  if (u.role==='client') return S.programs.filter(p=>p.clientId===u.clientId && p.status!=='draft' && !p.archived);
+  const r = role();
+  if (r==='admin') return S.programs.slice();
+  if (r==='coordinator') return S.programs.filter(p=>p.status!=='draft' && !p.archived && (p.coordinatorIds||[]).includes(u.id)); // assigned programs only
+  if (r==='client') return S.programs.filter(p=>p.clientId===u.clientId && p.status!=='draft' && !p.archived);
   const ids = new Set(visibleCourses().map(c=>c.programId)); return S.programs.filter(p=>ids.has(p.id));
 }
 /** A participant (one person, one account) can be enrolled in several courses: enrollments share the account email. */
-function myEnrollments(){ const u = me(); if (u.role!=='participant') return []; const p0 = part(u.participantId); if (!p0) return [];
+function myEnrollments(){ const u = me(); if (role()!=='participant') return []; const p0 = part(u.participantId); if (!p0) return [];
   const em = String(p0.email).toLowerCase(), list = S.participants.filter(x=>x.id===p0.id || (!x.withdrawn && String(x.email).toLowerCase()===em && cohort(x.cohortId) && !cohort(x.cohortId).archived && (()=>{ const c = course(cohort(x.cohortId).courseId); return c && !c.archived && program(c.programId).status!=='draft' && !program(c.programId).archived; })()));
   return list.sort((a,b)=>(cohortStart(a.cohortId)??999)-(cohortStart(b.cohortId)??999)); }
 const myPid = cid => (myEnrollments().find(x=>cohort(x.cohortId).courseId===cid) || part(me().participantId) || {}).id;
@@ -374,7 +394,7 @@ function addLog(type, p={}, actor){ S.log.push({id:uid('L'), ts:Date.now(), acto
 const LOG_GROUP = {checkin:'attendance', checkin_rejected:'attendance', manual:'attendance', session_start:'attendance', session_end:'attendance', code_regen:'attendance',
   program_create:'structure', program_update:'structure', program_archive:'structure', program_activate:'structure', course_save:'structure', course_archive:'structure', cohort_create:'structure', cohort_archive:'structure', day_add:'structure', day_update:'structure', day_remove:'structure', session_save:'structure', session_cancel:'structure', session_reorder:'structure', trainer_assign:'structure', notify_trainer:'structure',
   participant_add:'participants', participant_update:'participants', import:'participants',
-  assessment_save:'content', assessment_import:'content', survey_save:'content', survey_publish:'content', survey_response:'participants_act', assessment_ready:'content', assessment_version:'content', activity_save:'content', material_save:'content', material_release:'content', material_archive:'content', submission_review:'content',
+  assessment_save:'content', assessment_import:'content', profile_update:'access', survey_save:'content', survey_publish:'content', survey_response:'participants_act', assessment_ready:'content', assessment_version:'content', activity_save:'content', material_save:'content', material_release:'content', material_archive:'content', submission_review:'content',
   submission:'participants_act', eval:'participants_act', assessment:'participants_act',
   cert_approve:'certificates', cert_return:'certificates', template_update:'certificates',
   request_create:'requests', request_resolve:'requests', client_create:'structure', client_update:'structure', invite_send:'participants', invite_resend:'participants', account_activate:'participants_act', settings:'admin', cls_update:'admin', trainer_unassign:'structure', session_staff:'structure', coord_assign:'access', coord_unassign:'access', access_update:'access', access_deactivate:'access', access_reactivate:'access', data_migrate:'admin', room_add:'admin', user_invite:'access', export:'admin'};

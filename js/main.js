@@ -11,7 +11,7 @@ ACT.closeModal = () => closeModal();
 ACT.confirmOk = () => { const cb = CONFIRM_CB; CONFIRM_CB = null; closeModal(); cb && cb(); };
 ACT.resetDemo = () => confirmModal(t('resetDemo'), t('resetConfirm'), t('resetDemo'), ()=>{ closeAllModals(); resetDemo(); render(); toast(t('resetDone')); }, true);
 ACT.skip = (el, e) => { e.preventDefault(); $('#main').focus(); };
-CHG.switchUser = el => { setUser(el.value); go(DEFAULT_ROUTE[role()]); toast(t('switchedTo',{r:t('role.'+role(),null,true), n:L(me().name)}), 'info'); };
+CHG.switchUser = el => { const [id, r] = el.value.split('|'); setUser(id, r); go(DEFAULT_ROUTE[role()]); toast(t('switchedTo',{r:t('role.'+role(),null,true), n:L(me().name)}), 'info'); };
 ACT.tab = el => { const g = el.dataset.group, k = el.dataset.tab, R = parseHash();
   if (g==='pw'){ V.pw.tab = k; V.pw.q=''; setHash(href('program', R.id, {tab:k}), true); }
   if (g==='cw'){ V.cw.tab = k; V.ab = null; setHash(href('course', R.id, {tab:k}), true); }
